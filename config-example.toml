@@ -1,0 +1,25 @@
+[main]
+provider = "mandrill"
+
+[log]
+logfile = "mailer.log"
+file-level = "debug"
+term-level = "debug"
+
+[mandrill]
+key = "some-random-key"
+
+[mailgun]
+user = "api"
+pass = "pass-string-for-api"
+server = "example.com"
+
+# tokens is a map of authenticated tokens: 
+#"token" = "description"
+[tokens]
+"380sidug8nnmhhqp" = "test token"
+"300sisd98y237773" = "production token"
+
+[webserver]
+host = "0.0.0.0"
+port = "1233"

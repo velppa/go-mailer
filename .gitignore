@@ -22,3 +22,10 @@ _testmain.go
 *.exe
 *.test
 *.prof
+
+# Binaries
+go-mailer
+mailer
+
+# Configurational files
+config.toml
