@@ -9,10 +9,10 @@ being form-encoded (header `application/x-www-form-urlencoded`).
 ### Features
 
 * Multiple transactional mail providers
-** Mandrill
-** Mailgun
-** TBA SpartPost
-** TBA SendGrid
+    * Mandrill
+    * Mailgun
+    * TODO: SpartPost
+    * TODO: SendGrid
 
 * [MJML] templates support (if `mjml` app is available)
 
