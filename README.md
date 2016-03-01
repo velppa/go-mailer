@@ -9,10 +9,10 @@ being form-encoded (header `application/x-www-form-urlencoded`).
 ### Features
 
 * Multiple transactional mail providers
-  ** Mandrill
-  ** Mailgun
-  ** TBA SpartPost
-  ** TBA SendGrid
+** Mandrill
+** Mailgun
+** TBA SpartPost
+** TBA SendGrid
 
 * [MJML] templates support (if `mjml` app is available)
 
@@ -70,3 +70,6 @@ Structure of response:
 
     curl -v -d "token=78adfh3jjduu&subject=this is subject with spaces&from_email=schmooser@gmail.com&to=darth.vader@mailinator.com&text=Hi, my lord!" \
     http://localhost:1233/send
+
+
+[MJML]: http://mjml.io
