@@ -115,10 +115,15 @@ func JSONError(c *echo.Context, code int, message string) error {
 	return err
 }
 
-// CheckToken is a middleware which checks token passed in post data.
-func CheckToken() echo.Middleware {
+// CheckToken is a middleware which checks token passed either in header or in post data.
+func CheckToken(header bool) echo.Middleware {
 	return func(c *echo.Context) error {
-		token := c.Form("token")
+		var token string
+		if header {
+			token = c.Request().Header.Get("Authorization")
+		} else {
+			token = c.Form("token")
+		}
 		if token == "" {
 			return JSONError(c, http.StatusBadRequest, "token not provided")
 		}
@@ -134,7 +139,7 @@ func main() {
 
 	e.Use(echolog15.Logger(Log))
 	e.Use(mw.Recover())
-	e.Use(CheckToken())
+	e.Use(CheckToken(false))
 	e.SetHTTPErrorHandler(echolog15.HTTPErrorHandler(Log))
 
 	var p provider.Provider
