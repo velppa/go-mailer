@@ -193,9 +193,14 @@ func main() {
 			} else {
 				msg.HTML = html
 			}
-			msg.FromEmail = c.Form("from_email")
-			msg.FromName = c.Form("from_name")
-			msg.AddRecipient(c.Form("to"), "")
+			msg.From = &mail.Address{
+				Name:    c.Form("from_name"),
+				Address: c.Form("from_email"),
+			}
+			msg.AddTo(&mail.Address{
+				Name:    "",
+				Address: c.Form("to"),
+			})
 
 			// trying to send message 10 times
 			for i := 0; i < 10; i++ {

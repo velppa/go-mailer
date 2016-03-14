@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/mail"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/schmooser/go-mailer/message"
 )
@@ -32,9 +34,11 @@ func (mg *Mailgun) Send(msg *message.Message, async bool) (interface{}, error) {
 
 	data := url.Values{}
 	data.Add("from", fmt.Sprintf("%s <%s>", msg.FromName, msg.FromEmail))
-	for _, rcpt := range msg.Recipients {
-		data.Add("to", fmt.Sprintf("%s <%s>", rcpt.Name, rcpt.Email))
-	}
+
+	data.Add("to", msg.To())
+	data.Add("cc", msg.CC())
+	data.Add("bcc", msg.BCC())
+
 	data.Add("subject", msg.Subject)
 	data.Add("text", msg.Text)
 	data.Add("html", msg.HTML)

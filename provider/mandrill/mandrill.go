@@ -29,10 +29,16 @@ func (m *Mandrill) Send(msg *message.Message, async bool) (interface{}, error) {
 	mm.Subject = msg.Subject
 	mm.Text = msg.Text
 	mm.HTML = msg.HTML
-	mm.FromEmail = msg.FromEmail
-	mm.FromName = msg.FromName
-	for _, rcpt := range msg.Recipients {
-		mm.AddRecipient(rcpt.Email, rcpt.Name)
+	mm.FromEmail = msg.From.Address
+	mm.FromName = msg.From.Name
+	for _, rcpt := range msg.To {
+		mm.AddRecipientType(rcpt.Address, rcpt.Name, mmandrill.RecipientTo)
+	}
+	for _, rcpt := range msg.CC {
+		mm.AddRecipientType(rcpt.Address, rcpt.Name, mmandrill.RecipientCC)
+	}
+	for _, rcpt := range msg.BCC {
+		mm.AddRecipientType(rcpt.Address, rcpt.Name, mmandrill.RecipientBCC)
 	}
 	res, err := mm.Send(async)
 	return res, err
