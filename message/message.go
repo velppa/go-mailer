@@ -5,15 +5,36 @@ import (
 	"strings"
 )
 
+// AddressList is a slice of Addresses.
+type AddressList []*mail.Address
+
+// String returns list as comma-separated values.
+func (list AddressList) String() string {
+	ss := make([]string, len(list))
+	for i, addr := range list {
+		ss[i] = addr.String()
+	}
+	return strings.Join(ss, ", ")
+}
+
+// Slice returns slice of email strings.
+func (list AddressList) Slice() []string {
+	ss := make([]string, len(list))
+	for i, addr := range list {
+		ss[i] = addr.String()
+	}
+	return ss
+}
+
 // Message defines email message.
 type Message struct {
 	Subject string
 	Text    string
 	HTML    string
 	From    *mail.Address
-	To      []*mail.Address
-	CC      []*mail.Address
-	BCC     []*mail.Address
+	To      AddressList
+	CC      AddressList
+	BCC     AddressList
 }
 
 // NewMessage returns new empty Message instance.
@@ -34,27 +55,4 @@ func (msg *Message) AddCC(addr *mail.Address) {
 // AddBCC adds new recipient to slice of recipients.
 func (msg *Message) AddBCC(addr *mail.Address) {
 	msg.CC = append(msg.CC, addr)
-}
-
-func list(addrs []*mail.Address) string {
-	ss := make([]string, len(addrs))
-	for i, addr := range addrs {
-		ss[i] = addr.String()
-	}
-	return strings.Join(ss, ", ")
-}
-
-// To returns comma-separated recepient emails.
-func (msg *Message) To() string {
-	return list(msg.To)
-}
-
-// CC is the same as To but for CC field.
-func (msg *Message) CC() string {
-	return list(msg.CC)
-}
-
-// BCC is the same as To but for BCC field.
-func (msg *Message) BCC() string {
-	return list(msg.BCC)
 }

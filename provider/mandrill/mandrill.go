@@ -6,6 +6,7 @@ import (
 	"github.com/schmooser/go-mailer/message"
 )
 
+// Mandrill defines Mandrill transactional mail provider.
 type Mandrill struct {
 	apiKey string
 }
@@ -24,6 +25,7 @@ func New(key string) (*Mandrill, error) {
 	return m, nil
 }
 
+// Send sends provided message in async or sync way.
 func (m *Mandrill) Send(msg *message.Message, async bool) (interface{}, error) {
 	mm := mmandrill.NewMessage()
 	mm.Subject = msg.Subject

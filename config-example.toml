@@ -1,5 +1,7 @@
 [main]
 provider = "mandrill"
+#provider = "mailgun"
+#provider = "sparkpost"
 
 [log]
 logfile = "mailer.log"
@@ -7,7 +9,10 @@ file-level = "debug"
 term-level = "debug"
 
 [mandrill]
-key = "some-random-key"
+key = "mandrill-api-key"
+
+[sparkpost]
+key = "sparkpost-api-key"
 
 [mailgun]
 user = "api"

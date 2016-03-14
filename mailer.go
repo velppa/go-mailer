@@ -21,6 +21,7 @@ import (
 	"github.com/schmooser/go-mailer/provider"
 	"github.com/schmooser/go-mailer/provider/mailgun"
 	"github.com/schmooser/go-mailer/provider/mandrill"
+	"github.com/schmooser/go-mailer/provider/sparkpost"
 )
 
 var (
@@ -40,6 +41,9 @@ var (
 			Server string
 		}
 		Mandrill struct {
+			Key string
+		}
+		SparkPost struct {
 			Key string
 		}
 		// Tokens is a map with token as a key and description as a value.
@@ -152,6 +156,12 @@ func main() {
 		p, err = mandrill.New(Config.Mandrill.Key)
 		if err != nil {
 			Log.Error("Mandrill instance creation failed", "err", err)
+			os.Exit(1)
+		}
+	case "sparkpost":
+		p, err = sparkpost.New(Config.SparkPost.Key)
+		if err != nil {
+			Log.Error("SparkPost instance creation failed", "err", err)
 			os.Exit(1)
 		}
 	default:

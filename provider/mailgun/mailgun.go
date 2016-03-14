@@ -5,20 +5,20 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"net/mail"
 	"net/url"
 	"strconv"
-	"strings"
 
 	"github.com/schmooser/go-mailer/message"
 )
 
+// Mailgun defines Mailgun transactional mail provider.
 type Mailgun struct {
 	user   string
 	pass   string
 	server string
 }
 
+// New returns new Mailgun instance.
 func New(user, pass, server string) *Mailgun {
 	return &Mailgun{
 		user:   user,
@@ -33,11 +33,11 @@ func (mg *Mailgun) Send(msg *message.Message, async bool) (interface{}, error) {
 	apiURL := fmt.Sprintf("https://api.mailgun.net/v3/%s/messages", mg.server)
 
 	data := url.Values{}
-	data.Add("from", fmt.Sprintf("%s <%s>", msg.FromName, msg.FromEmail))
+	data.Add("from", msg.From.String())
 
-	data.Add("to", msg.To())
-	data.Add("cc", msg.CC())
-	data.Add("bcc", msg.BCC())
+	data.Add("to", msg.To.String())
+	data.Add("cc", msg.CC.String())
+	data.Add("bcc", msg.BCC.String())
 
 	data.Add("subject", msg.Subject)
 	data.Add("text", msg.Text)
