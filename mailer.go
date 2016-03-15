@@ -15,7 +15,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/labstack/echo"
 	"github.com/labstack/echo/engine/standard"
-	mw "github.com/labstack/echo/middleware"
+	"github.com/labstack/echo/middleware"
 	"github.com/schmooser/go-echolog15"
 	log "gopkg.in/inconshreveable/log15.v2"
 
@@ -61,7 +61,6 @@ var (
 )
 
 func init() {
-
 	configFile := flag.String("config", "config.toml", "configuration file")
 	flag.Parse()
 
@@ -107,8 +106,8 @@ func init() {
 
 // JSONResponse is a struct which is returned to user.
 type JSONResponse struct {
-	Status  string
-	Message string
+	Status  string `json:"status"`
+	Message string `json:"message"`
 }
 
 // JSONError sends json error to context.
@@ -144,92 +143,92 @@ func CheckToken(header bool) echo.MiddlewareFunc {
 
 func sendHandler(p provider.Provider) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		go func() {
-			msg := message.NewMessage()
+		Log.Debug("Handler starts")
 
-			var html string
+		// binding incoming data
+		data := struct {
+			Subject string          `json:"subject"`
+			Text    string          `json:"text"`
+			HTML    string          `json:"html"`
+			MJML    string          `json:"mjml"`
+			From    *mail.Address   `json:"from"`
+			To      []*mail.Address `json:"to"`
+			CC      []*mail.Address `json:"cc"`
+			BCC     []*mail.Address `json:"bcc"`
+		}{}
 
-			// handling mjml template
-			mjml := c.Form("mjml")
-			if mjml != "" {
+		if err := c.Bind(&data); err != nil {
+			Log.Error("Binding data failed", "err", err)
+			return JSONError(c, http.StatusInternalServerError, "data binding failed")
+		}
 
-				// save mjml content as temporary file
-				filename := path.Join(os.TempDir(), "mail-"+strconv.Itoa(rand.Int()))
-				ioutil.WriteFile(filename+".mjml", []byte(mjml), 0644)
+		Log.Debug("Incoming data", "data", data)
 
-				// run mjml to convert to html
-				cmd := exec.Command("mjml", "-r", filename+".mjml", "-o", filename+".html")
-				err := cmd.Run()
-				if err != nil {
-					Log.Error("mjml conversion failed", "err", err, "mjml", filename+".mjml")
-				} else {
-					var b []byte
-					b, err := ioutil.ReadFile(filename + ".html")
-					if err != nil {
-						Log.Error("reading mjml-converted file failed", "err", err, "html", filename+".html")
-					} else {
-						Log.Debug("mjml converted to html successfully", "mjml", filename+".mjml", "html", filename+".html")
-						html = string(b)
-					}
-				}
-			}
+		// handling mjml template
+		if data.HTML == "" && data.MJML != "" {
 
-			msg.Subject = c.Form("subject")
-			msg.Text = c.Form("text")
-			if c.Form("html") != "" {
-				msg.HTML = c.Form("html")
+			// save mjml content as temporary file
+			filename := path.Join(os.TempDir(), "mail-"+strconv.Itoa(rand.Int()))
+			ioutil.WriteFile(filename+".mjml", []byte(data.MJML), 0644)
+
+			// run mjml to convert to html
+			cmd := exec.Command("mjml", "-r", filename+".mjml", "-o", filename+".html")
+			err := cmd.Run()
+			if err != nil {
+				Log.Error("mjml conversion failed", "err", err, "mjml", filename+".mjml")
 			} else {
-				msg.HTML = html
-			}
-			msg.From = &mail.Address{
-				Name:    c.Form("from_name"),
-				Address: c.Form("from_email"),
-			}
-			msg.AddTo(&mail.Address{
-				Name:    "",
-				Address: c.Form("to"),
-			})
-
-			// trying to send message 10 times
-			for i := 0; i < 10; i++ {
-				// sending message
-				resp, err := p.Send(msg, true)
+				var b []byte
+				b, err := ioutil.ReadFile(filename + ".html")
 				if err != nil {
-					Log.Error("Sending message failed", "err", err, "iteration", i)
-					time.Sleep(time.Duration(10*i) * time.Second)
-					Log.Debug("Trying to send message again", "iteration", i+2)
-					continue
+					Log.Error("reading mjml-converted file failed", "err", err, "html", filename+".html")
+				} else {
+					Log.Debug("mjml converted to html successfully", "mjml", filename+".mjml", "html", filename+".html")
+					data.HTML = string(b)
 				}
-				Log.Debug("Sender service response", "resp", resp)
-
-				// message was sent - returning
-				return
 			}
+		}
 
-			// message wasn't sent, saving as unsent
-			// todo: save of unsent message
-		}()
+		msg := &message.Message{
+			Subject: data.Subject,
+			Text:    data.Text,
+			HTML:    data.HTML,
+			From:    data.From,
+			To:      data.To,
+			CC:      data.CC,
+			BCC:     data.BCC,
+		}
 
-		return c.JSON(http.StatusOK, JSONResponse{
-			Status:  "ok",
-			Message: "email added to the queue",
-		})
+		// trying to send message 10 times
+		for i := 0; i < 10; i++ {
+			// sending message
+			resp, err := p.Send(msg, true)
+			if err != nil {
+				Log.Error("Sending message failed", "err", err, "iteration", i)
+				time.Sleep(time.Duration(10*i) * time.Second)
+				Log.Debug("Trying to send message again", "iteration", i+2)
+				continue
+			}
+			Log.Debug("Sender service response", "resp", resp)
 
+			// message was sent - returning
+			return c.JSON(http.StatusOK, JSONResponse{
+				Status:  "ok",
+				Message: "email added to the queue",
+			})
+		}
+
+		return JSONError(c, http.StatusInternalServerError, "message was not sent")
 	}
 }
 
 func main() {
-	e := echo.New()
 
-	e.Use(echolog15.Logger(Log))
-	e.Use(mw.Recover())
-	e.Use(CheckToken(false))
-	e.SetHTTPErrorHandler(echolog15.HTTPErrorHandler(Log))
-
+	// provider
 	var p provider.Provider
 	var err error
 
 	switch Config.Main.Provider {
+
 	case "mailgun":
 		p = mailgun.New(Config.Mailgun.User, Config.Mailgun.Pass, Config.Mailgun.Server)
 	case "mandrill":
@@ -249,6 +248,13 @@ func main() {
 		os.Exit(1)
 	}
 
+	// echo
+	e := echo.New()
+
+	e.Use(echolog15.Logger(Log))
+	e.Use(middleware.Recover())
+	//e.Use(CheckToken(true))
+	e.SetHTTPErrorHandler(echolog15.HTTPErrorHandler(Log))
 	e.Post("/send", sendHandler(p))
 	e.Run(standard.New(Config.WebServer.Host + ":" + Config.WebServer.Port))
 }

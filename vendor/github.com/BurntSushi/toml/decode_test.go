@@ -523,16 +523,90 @@ type ingredient struct {
 }
 
 func TestDecodeSlices(t *testing.T) {
-	s := struct{ Test []string }{Test: []string{}}
-	if _, err := Decode(`Test = ["test"]`, &s); err != nil {
-		t.Errorf("Error decoding into empty slice: %s", err)
+	type T struct {
+		S []string
 	}
-	s.Test = []string{"a", "b", "c"}
-	if _, err := Decode(`Test = ["test"]`, &s); err != nil {
-		t.Errorf("Error decoding into oversized slice: %s", err)
+	for i, tt := range []struct {
+		v     T
+		input string
+		want  T
+	}{
+		{T{}, "", T{}},
+		{T{[]string{}}, "", T{[]string{}}},
+		{T{[]string{"a", "b"}}, "", T{[]string{"a", "b"}}},
+		{T{}, "S = []", T{[]string{}}},
+		{T{[]string{}}, "S = []", T{[]string{}}},
+		{T{[]string{"a", "b"}}, "S = []", T{[]string{}}},
+		{T{}, `S = ["x"]`, T{[]string{"x"}}},
+		{T{[]string{}}, `S = ["x"]`, T{[]string{"x"}}},
+		{T{[]string{"a", "b"}}, `S = ["x"]`, T{[]string{"x"}}},
+	} {
+		if _, err := Decode(tt.input, &tt.v); err != nil {
+			t.Errorf("[%d] %s", i, err)
+			continue
+		}
+		if !reflect.DeepEqual(tt.v, tt.want) {
+			t.Errorf("[%d] got %#v; want %#v", i, tt.v, tt.want)
+		}
 	}
-	if want := []string{"test"}; !reflect.DeepEqual(s.Test, want) {
-		t.Errorf("Got %v; want %v", s.Test, want)
+}
+
+func TestDecodePrimitive(t *testing.T) {
+	type S struct {
+		P Primitive
+	}
+	type T struct {
+		S []int
+	}
+	slicep := func(s []int) *[]int { return &s }
+	arrayp := func(a [2]int) *[2]int { return &a }
+	mapp := func(m map[string]int) *map[string]int { return &m }
+	for i, tt := range []struct {
+		v     interface{}
+		input string
+		want  interface{}
+	}{
+		// slices
+		{slicep(nil), "", slicep(nil)},
+		{slicep([]int{}), "", slicep([]int{})},
+		{slicep([]int{1, 2, 3}), "", slicep([]int{1, 2, 3})},
+		{slicep(nil), "P = [1,2]", slicep([]int{1, 2})},
+		{slicep([]int{}), "P = [1,2]", slicep([]int{1, 2})},
+		{slicep([]int{1, 2, 3}), "P = [1,2]", slicep([]int{1, 2})},
+
+		// arrays
+		{arrayp([2]int{2, 3}), "", arrayp([2]int{2, 3})},
+		{arrayp([2]int{2, 3}), "P = [3,4]", arrayp([2]int{3, 4})},
+
+		// maps
+		{mapp(nil), "", mapp(nil)},
+		{mapp(map[string]int{}), "", mapp(map[string]int{})},
+		{mapp(map[string]int{"a": 1}), "", mapp(map[string]int{"a": 1})},
+		{mapp(nil), "[P]\na = 2", mapp(map[string]int{"a": 2})},
+		{mapp(map[string]int{}), "[P]\na = 2", mapp(map[string]int{"a": 2})},
+		{mapp(map[string]int{"a": 1, "b": 3}), "[P]\na = 2", mapp(map[string]int{"a": 2, "b": 3})},
+
+		// structs
+		{&T{nil}, "[P]", &T{nil}},
+		{&T{[]int{}}, "[P]", &T{[]int{}}},
+		{&T{[]int{1, 2, 3}}, "[P]", &T{[]int{1, 2, 3}}},
+		{&T{nil}, "[P]\nS = [1,2]", &T{[]int{1, 2}}},
+		{&T{[]int{}}, "[P]\nS = [1,2]", &T{[]int{1, 2}}},
+		{&T{[]int{1, 2, 3}}, "[P]\nS = [1,2]", &T{[]int{1, 2}}},
+	} {
+		var s S
+		md, err := Decode(tt.input, &s)
+		if err != nil {
+			t.Errorf("[%d] Decode error: %s", i, err)
+			continue
+		}
+		if err := md.PrimitiveDecode(s.P, tt.v); err != nil {
+			t.Errorf("[%d] PrimitiveDecode error: %s", i, err)
+			continue
+		}
+		if !reflect.DeepEqual(tt.v, tt.want) {
+			t.Errorf("[%d] got %#v; want %#v", i, tt.v, tt.want)
+		}
 	}
 }
 

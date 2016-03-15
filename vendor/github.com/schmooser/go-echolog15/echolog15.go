@@ -38,21 +38,19 @@ func Logger(l log15.Logger) echo.MiddlewareFunc {
 				c.Error(err)
 			}
 			stop := time.Now()
-			method := req.Method
+
 			path := req.URL().Path()
 			if path == "" {
 				path = "/"
 			}
-			size := res.Size()
-			code := res.Status()
 
 			l.Info("Echo response",
 				"remoteAddr", remoteAddr,
-				"method", method,
+				"method", req.Method(),
 				"path", path,
-				"response", code,
+				"response", res.Status(),
 				"time", stop.Sub(start),
-				"size", size)
+				"size", res.Size())
 			return nil
 		})
 	}
