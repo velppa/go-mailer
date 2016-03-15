@@ -8,3 +8,5 @@ RUN apk add --no-cache ca-certificates bash coreutils nodejs
 RUN npm install -g mjml
 
 ADD ./build /app
+
+ENV PATH=/app:$PATH
