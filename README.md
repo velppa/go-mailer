@@ -11,7 +11,7 @@ being form-encoded (header `application/x-www-form-urlencoded`).
 * Multiple transactional mail providers
     * Mandrill
     * Mailgun
-    * TODO: SpartPost
+    * SpartPost
     * TODO: SendGrid
 
 * [MJML] templates support (if `mjml` app is available)
@@ -20,17 +20,45 @@ being form-encoded (header `application/x-www-form-urlencoded`).
 
 * Async send
 
+### Authentication
 
-### API parameters
+Authentication is done via tokens, configured in configuration file. Token should be sent in HTTP Header:
 
-* `token` - mandatory, auth token registered in application's configuration file
-* `subject` - email's subject
-* `from_email` - mandatory, sender's email address
-* `from_name` - sender's name
-* `to` - recepient's email address, only one address is currently supported
-* `text` - message in text format
-* `html` - message in html format
-* `mjml` - message in [mjml](http://mjml.io) format, it will be converted to html on fly
+    Authorization: <secret-token-here>
+
+### Data
+
+Data is provided as JSON document of the following format:
+
+
+    {
+        "subject": "Hello message",
+        "text": "Hello, world!",
+        "html": "<h1>Hello, world!</h1>",
+        "mjml": "<mjml>Some mjml markup</mjml>",
+        "from": {
+            "name": "pavel",
+            "address": "schmooser@gmail.com"
+        },
+        "to": [
+            {
+                "name": "pavel",
+                "address": "schmooser+to@gmail.com"
+            }
+        ],
+        "cc": [
+            {
+                "name": "pavel",
+                "address": "schmooser+cc@gmail.com"
+            }
+        ],
+        "bcc": [
+            {
+                "name": "pavel",
+                "address": "schmooser+bcc@gmail.com"
+            }
+        ]
+    }
 
 *Note*, that if `html` parameter is provided, then `mjml` parameter is ignored.
 If both `text` and `html` (or `mjml`) parameters are provided then resulting

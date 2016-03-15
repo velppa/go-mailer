@@ -1,6 +1,8 @@
 package mandrill
 
 import (
+	"fmt"
+
 	mmandrill "github.com/mostafah/mandrill"
 
 	"github.com/schmooser/go-mailer/message"
@@ -25,6 +27,15 @@ func New(key string) (*Mandrill, error) {
 	return m, nil
 }
 
+// SendResult encapsulates mostafah/mandrill SendResult.
+type SendResult struct {
+	*mmandrill.SendResult
+}
+
+func (sr SendResult) String() string {
+	return fmt.Sprintf("%+v", sr.SendResult)
+}
+
 // Send sends provided message in async or sync way.
 func (m *Mandrill) Send(msg *message.Message, async bool) (interface{}, error) {
 	mm := mmandrill.NewMessage()
@@ -43,5 +54,9 @@ func (m *Mandrill) Send(msg *message.Message, async bool) (interface{}, error) {
 		mm.AddRecipientType(rcpt.Address, rcpt.Name, mmandrill.RecipientBCC)
 	}
 	res, err := mm.Send(async)
-	return res, err
+	sr := make([]SendResult, len(res))
+	for i, r := range res {
+		sr[i] = SendResult{r}
+	}
+	return sr, err
 }

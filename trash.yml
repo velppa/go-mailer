@@ -16,3 +16,6 @@ import:
 
 - package: github.com/SparkPost/gosparkpost
   version: 28bcd07d82660153848d7893ff715128bb88e4cd
+
+- package: github.com/certifi/gocertifi
+  version: master # they only add certificates

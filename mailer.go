@@ -121,30 +121,23 @@ func JSONError(c echo.Context, code int, message string) error {
 }
 
 // CheckToken is a middleware which checks token passed either in header or in post data.
-func CheckToken(header bool) echo.MiddlewareFunc {
+func CheckToken() echo.MiddlewareFunc {
 	return func(next echo.Handler) echo.Handler {
 		return echo.HandlerFunc(func(c echo.Context) error {
-			var token string
-			if header {
-				token = c.Request().Header().Get("Authorization")
-			} else {
-				token = c.Form("token")
-			}
+			token := c.Request().Header().Get("Authorization")
 			if token == "" {
 				return JSONError(c, http.StatusBadRequest, "token not provided")
 			}
 			if _, ok := Config.Tokens[token]; !ok {
 				return JSONError(c, http.StatusUnauthorized, "invalid token")
 			}
-			return nil
+			return next.Handle(c)
 		})
 	}
 }
 
 func sendHandler(p provider.Provider) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		Log.Debug("Handler starts")
-
 		// binding incoming data
 		data := struct {
 			Subject string          `json:"subject"`
@@ -159,65 +152,68 @@ func sendHandler(p provider.Provider) echo.HandlerFunc {
 
 		if err := c.Bind(&data); err != nil {
 			Log.Error("Binding data failed", "err", err)
-			return JSONError(c, http.StatusInternalServerError, "data binding failed")
+			return JSONError(c, http.StatusBadRequest, "can't understand provided data")
 		}
 
 		Log.Debug("Incoming data", "data", data)
 
-		// handling mjml template
-		if data.HTML == "" && data.MJML != "" {
+		// Sending message asynchrounously
+		go func() {
+			// handling mjml template
+			if data.HTML == "" && data.MJML != "" {
 
-			// save mjml content as temporary file
-			filename := path.Join(os.TempDir(), "mail-"+strconv.Itoa(rand.Int()))
-			ioutil.WriteFile(filename+".mjml", []byte(data.MJML), 0644)
+				// save mjml content as temporary file
+				filename := path.Join(os.TempDir(), "mail-"+strconv.Itoa(rand.Int()))
+				ioutil.WriteFile(filename+".mjml", []byte(data.MJML), 0644)
 
-			// run mjml to convert to html
-			cmd := exec.Command("mjml", "-r", filename+".mjml", "-o", filename+".html")
-			err := cmd.Run()
-			if err != nil {
-				Log.Error("mjml conversion failed", "err", err, "mjml", filename+".mjml")
-			} else {
-				var b []byte
-				b, err := ioutil.ReadFile(filename + ".html")
+				// run mjml to convert to html
+				cmd := exec.Command("mjml", "-r", filename+".mjml", "-o", filename+".html")
+				err := cmd.Run()
 				if err != nil {
-					Log.Error("reading mjml-converted file failed", "err", err, "html", filename+".html")
+					Log.Error("mjml conversion failed", "err", err, "mjml", filename+".mjml")
 				} else {
-					Log.Debug("mjml converted to html successfully", "mjml", filename+".mjml", "html", filename+".html")
-					data.HTML = string(b)
+					var b []byte
+					b, err := ioutil.ReadFile(filename + ".html")
+					if err != nil {
+						Log.Error("reading mjml-converted file failed", "err", err, "html", filename+".html")
+					} else {
+						Log.Debug("mjml converted to html successfully", "mjml", filename+".mjml", "html", filename+".html")
+						data.HTML = string(b)
+					}
 				}
 			}
-		}
 
-		msg := &message.Message{
-			Subject: data.Subject,
-			Text:    data.Text,
-			HTML:    data.HTML,
-			From:    data.From,
-			To:      data.To,
-			CC:      data.CC,
-			BCC:     data.BCC,
-		}
-
-		// trying to send message 10 times
-		for i := 0; i < 10; i++ {
-			// sending message
-			resp, err := p.Send(msg, true)
-			if err != nil {
-				Log.Error("Sending message failed", "err", err, "iteration", i)
-				time.Sleep(time.Duration(10*i) * time.Second)
-				Log.Debug("Trying to send message again", "iteration", i+2)
-				continue
+			msg := &message.Message{
+				Subject: data.Subject,
+				Text:    data.Text,
+				HTML:    data.HTML,
+				From:    data.From,
+				To:      data.To,
+				CC:      data.CC,
+				BCC:     data.BCC,
 			}
-			Log.Debug("Sender service response", "resp", resp)
 
-			// message was sent - returning
-			return c.JSON(http.StatusOK, JSONResponse{
-				Status:  "ok",
-				Message: "email added to the queue",
-			})
-		}
+			// trying to send message 10 times
+			for i := 0; i < 10; i++ {
+				// sending message
+				resp, err := p.Send(msg, true)
+				if err != nil {
+					Log.Error("Sending message failed", "err", err, "iteration", i)
+					time.Sleep(time.Duration(10*i) * time.Second)
+					Log.Debug("Trying to send message again", "iteration", i+2)
+					continue
+				}
+				Log.Debug("Provider response", "resp", resp)
+				return
+			}
+			Log.Error("Message was not sent")
+		}()
 
-		return JSONError(c, http.StatusInternalServerError, "message was not sent")
+		// message was sent - returning
+		return c.JSON(http.StatusOK, JSONResponse{
+			Status:  "ok",
+			Message: "email added to the queue",
+		})
 	}
 }
 
@@ -253,8 +249,9 @@ func main() {
 
 	e.Use(echolog15.Logger(Log))
 	e.Use(middleware.Recover())
-	//e.Use(CheckToken(true))
+	e.Use(CheckToken())
 	e.SetHTTPErrorHandler(echolog15.HTTPErrorHandler(Log))
+
 	e.Post("/send", sendHandler(p))
 	e.Run(standard.New(Config.WebServer.Host + ":" + Config.WebServer.Port))
 }
