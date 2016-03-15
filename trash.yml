@@ -17,5 +17,21 @@ import:
 - package: github.com/SparkPost/gosparkpost
   version: 28bcd07d82660153848d7893ff715128bb88e4cd
 
+# below are dependencies that trash can't find automatically
 - package: github.com/certifi/gocertifi
   version: master # they only add certificates
+
+- package: github.com/jmcvetta/napping
+  version: v3.0.5
+
+- package: golang.org/x/net/context
+  version: master
+
+- package: github.com/labstack/gommon
+  version: master
+
+- package: github.com/mattn/go-colorable
+  version: master
+
+- package: github.com/mattn/go-isatty
+  version: master
