@@ -14,6 +14,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/labstack/echo"
+	"github.com/labstack/echo/engine/standard"
 	mw "github.com/labstack/echo/middleware"
 	"github.com/schmooser/go-echolog15"
 	log "gopkg.in/inconshreveable/log15.v2"
@@ -111,7 +112,7 @@ type JSONResponse struct {
 }
 
 // JSONError sends json error to context.
-func JSONError(c *echo.Context, code int, message string) error {
+func JSONError(c echo.Context, code int, message string) error {
 	c.JSON(code, JSONResponse{
 		Status:  "error",
 		Message: message,
@@ -121,57 +122,28 @@ func JSONError(c *echo.Context, code int, message string) error {
 }
 
 // CheckToken is a middleware which checks token passed either in header or in post data.
-func CheckToken(header bool) echo.Middleware {
-	return func(c *echo.Context) error {
-		var token string
-		if header {
-			token = c.Request().Header.Get("Authorization")
-		} else {
-			token = c.Form("token")
-		}
-		if token == "" {
-			return JSONError(c, http.StatusBadRequest, "token not provided")
-		}
-		if _, ok := Config.Tokens[token]; !ok {
-			return JSONError(c, http.StatusUnauthorized, "invalid token")
-		}
-		return nil
+func CheckToken(header bool) echo.MiddlewareFunc {
+	return func(next echo.Handler) echo.Handler {
+		return echo.HandlerFunc(func(c echo.Context) error {
+			var token string
+			if header {
+				token = c.Request().Header().Get("Authorization")
+			} else {
+				token = c.Form("token")
+			}
+			if token == "" {
+				return JSONError(c, http.StatusBadRequest, "token not provided")
+			}
+			if _, ok := Config.Tokens[token]; !ok {
+				return JSONError(c, http.StatusUnauthorized, "invalid token")
+			}
+			return nil
+		})
 	}
 }
 
-func main() {
-	e := echo.New()
-
-	e.Use(echolog15.Logger(Log))
-	e.Use(mw.Recover())
-	e.Use(CheckToken(false))
-	e.SetHTTPErrorHandler(echolog15.HTTPErrorHandler(Log))
-
-	var p provider.Provider
-	var err error
-
-	switch Config.Main.Provider {
-	case "mailgun":
-		p = mailgun.New(Config.Mailgun.User, Config.Mailgun.Pass, Config.Mailgun.Server)
-	case "mandrill":
-		p, err = mandrill.New(Config.Mandrill.Key)
-		if err != nil {
-			Log.Error("Mandrill instance creation failed", "err", err)
-			os.Exit(1)
-		}
-	case "sparkpost":
-		p, err = sparkpost.New(Config.SparkPost.Key)
-		if err != nil {
-			Log.Error("SparkPost instance creation failed", "err", err)
-			os.Exit(1)
-		}
-	default:
-		Log.Error("Provider is not supported", "provider", Config.Main.Provider)
-		os.Exit(1)
-	}
-
-	e.Post("/send", func(c *echo.Context) error {
-
+func sendHandler(p provider.Provider) echo.HandlerFunc {
+	return func(c echo.Context) error {
 		go func() {
 			msg := message.NewMessage()
 
@@ -242,7 +214,41 @@ func main() {
 			Status:  "ok",
 			Message: "email added to the queue",
 		})
-	})
 
-	e.Run(Config.WebServer.Host + ":" + Config.WebServer.Port)
+	}
+}
+
+func main() {
+	e := echo.New()
+
+	e.Use(echolog15.Logger(Log))
+	e.Use(mw.Recover())
+	e.Use(CheckToken(false))
+	e.SetHTTPErrorHandler(echolog15.HTTPErrorHandler(Log))
+
+	var p provider.Provider
+	var err error
+
+	switch Config.Main.Provider {
+	case "mailgun":
+		p = mailgun.New(Config.Mailgun.User, Config.Mailgun.Pass, Config.Mailgun.Server)
+	case "mandrill":
+		p, err = mandrill.New(Config.Mandrill.Key)
+		if err != nil {
+			Log.Error("Mandrill instance creation failed", "err", err)
+			os.Exit(1)
+		}
+	case "sparkpost":
+		p, err = sparkpost.New(Config.SparkPost.Key)
+		if err != nil {
+			Log.Error("SparkPost instance creation failed", "err", err)
+			os.Exit(1)
+		}
+	default:
+		Log.Error("Provider is not supported", "provider", Config.Main.Provider)
+		os.Exit(1)
+	}
+
+	e.Post("/send", sendHandler(p))
+	e.Run(standard.New(Config.WebServer.Host + ":" + Config.WebServer.Port))
 }

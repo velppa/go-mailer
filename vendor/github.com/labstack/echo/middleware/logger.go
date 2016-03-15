@@ -8,34 +8,42 @@ import (
 	"github.com/labstack/gommon/color"
 )
 
-const (
-	format = "%s %s %s %s %s %d"
+type (
+	LoggerConfig struct {
+	}
 )
 
-// Logger returns a Middleware that logs requests.
+var (
+	DefaultLoggerConfig = LoggerConfig{}
+)
+
 func Logger() echo.MiddlewareFunc {
-	return func(h echo.HandlerFunc) echo.HandlerFunc {
-		return func(c *echo.Context) error {
+	return LoggerFromConfig(DefaultLoggerConfig)
+}
+
+func LoggerFromConfig(config LoggerConfig) echo.MiddlewareFunc {
+	return func(next echo.Handler) echo.Handler {
+		return echo.HandlerFunc(func(c echo.Context) error {
 			req := c.Request()
 			res := c.Response()
-			logger := c.Echo().Logger()
+			logger := c.Logger()
 
-			remoteAddr := req.RemoteAddr
-			if ip := req.Header.Get(echo.XRealIP); ip != "" {
+			remoteAddr := req.RemoteAddress()
+			if ip := req.Header().Get(echo.XRealIP); ip != "" {
 				remoteAddr = ip
-			} else if ip = req.Header.Get(echo.XForwardedFor); ip != "" {
+			} else if ip = req.Header().Get(echo.XForwardedFor); ip != "" {
 				remoteAddr = ip
 			} else {
 				remoteAddr, _, _ = net.SplitHostPort(remoteAddr)
 			}
 
 			start := time.Now()
-			if err := h(c); err != nil {
+			if err := next.Handle(c); err != nil {
 				c.Error(err)
 			}
 			stop := time.Now()
-			method := req.Method
-			path := req.URL.Path
+			method := req.Method()
+			path := req.URL().Path()
 			if path == "" {
 				path = "/"
 			}
@@ -52,8 +60,8 @@ func Logger() echo.MiddlewareFunc {
 				code = color.Cyan(n)
 			}
 
-			logger.Infof(format, remoteAddr, method, path, code, stop.Sub(start), size)
+			logger.Printf("%s %s %s %s %s %d", remoteAddr, method, path, code, stop.Sub(start), size)
 			return nil
-		}
+		})
 	}
 }

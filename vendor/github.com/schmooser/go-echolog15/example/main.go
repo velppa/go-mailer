@@ -20,6 +20,7 @@ func main() {
 
 	// logger
 	log := log15.New()
+
 	// Logger middleware
 	e.Use(echolog15.Logger(log))
 

@@ -1,10 +1,10 @@
-package: .
+package: github.com/labstack/echo
 import:
-- package: github.com/labstack/echo
 - package: github.com/labstack/gommon
   subpackages:
   - /color
   - log
+- package: github.com/valyala/fasthttp
 - package: golang.org/x/net
   subpackages:
   - /context

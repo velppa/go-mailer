@@ -1,73 +1,79 @@
 package middleware
 
 import (
-	"bufio"
 	"compress/gzip"
 	"io"
 	"io/ioutil"
-	"net"
 	"net/http"
 	"strings"
 	"sync"
 
 	"github.com/labstack/echo"
+	"github.com/labstack/echo/engine"
 )
 
 type (
-	gzipWriter struct {
+	GzipConfig struct {
+		Level int
+	}
+
+	gzipResponseWriter struct {
+		engine.Response
 		io.Writer
-		http.ResponseWriter
 	}
 )
 
-func (w gzipWriter) Write(b []byte) (int, error) {
-	if w.Header().Get(echo.ContentType) == "" {
-		w.Header().Set(echo.ContentType, http.DetectContentType(b))
+var (
+	defaultGzipConfig = GzipConfig{
+		Level: gzip.DefaultCompression,
 	}
-	return w.Writer.Write(b)
-}
-
-func (w gzipWriter) Flush() error {
-	return w.Writer.(*gzip.Writer).Flush()
-}
-
-func (w gzipWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
-	return w.ResponseWriter.(http.Hijacker).Hijack()
-}
-
-func (w *gzipWriter) CloseNotify() <-chan bool {
-	return w.ResponseWriter.(http.CloseNotifier).CloseNotify()
-}
-
-var writerPool = sync.Pool{
-	New: func() interface{} {
-		return gzip.NewWriter(ioutil.Discard)
-	},
-}
+)
 
 // Gzip returns a middleware which compresses HTTP response using gzip compression
 // scheme.
 func Gzip() echo.MiddlewareFunc {
+	return GzipFromConfig(defaultGzipConfig)
+}
+
+// GzipFromConfig return `Gzip` middleware from config.
+func GzipFromConfig(config GzipConfig) echo.MiddlewareFunc {
+	pool := gzipPool(config)
 	scheme := "gzip"
 
-	return func(h echo.HandlerFunc) echo.HandlerFunc {
-		return func(c *echo.Context) error {
+	return func(next echo.Handler) echo.Handler {
+		return echo.HandlerFunc(func(c echo.Context) error {
 			c.Response().Header().Add(echo.Vary, echo.AcceptEncoding)
-			if strings.Contains(c.Request().Header.Get(echo.AcceptEncoding), scheme) {
-				w := writerPool.Get().(*gzip.Writer)
+			if strings.Contains(c.Request().Header().Get(echo.AcceptEncoding), scheme) {
+				w := pool.Get().(*gzip.Writer)
 				w.Reset(c.Response().Writer())
 				defer func() {
 					w.Close()
-					writerPool.Put(w)
+					pool.Put(w)
 				}()
-				gw := gzipWriter{Writer: w, ResponseWriter: c.Response().Writer()}
+				g := gzipResponseWriter{Response: c.Response(), Writer: w}
 				c.Response().Header().Set(echo.ContentEncoding, scheme)
-				c.Response().SetWriter(gw)
+				c.Response().SetWriter(g)
 			}
-			if err := h(c); err != nil {
+			if err := next.Handle(c); err != nil {
 				c.Error(err)
 			}
 			return nil
-		}
+		})
+	}
+}
+
+func (g gzipResponseWriter) Write(b []byte) (int, error) {
+	if g.Header().Get(echo.ContentType) == "" {
+		g.Header().Set(echo.ContentType, http.DetectContentType(b))
+	}
+	return g.Writer.Write(b)
+}
+
+func gzipPool(config GzipConfig) sync.Pool {
+	return sync.Pool{
+		New: func() interface{} {
+			w, _ := gzip.NewWriterLevel(ioutil.Discard, config.Level)
+			return w
+		},
 	}
 }

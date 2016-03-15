@@ -3,7 +3,7 @@ package echolog15
 import (
 	"net"
 	"net/http"
-	"net/http/httputil"
+	//"net/http/httputil"
 	"time"
 
 	"github.com/labstack/echo"
@@ -12,32 +12,34 @@ import (
 
 // Logger is a logger middleware for log15 package.
 func Logger(l log15.Logger) echo.MiddlewareFunc {
-	return func(h echo.HandlerFunc) echo.HandlerFunc {
-		return func(c *echo.Context) error {
+	return func(next echo.Handler) echo.Handler {
+		return echo.HandlerFunc(func(c echo.Context) error {
 			req := c.Request()
 			res := c.Response()
 
-			l.Debug("Echo request", "req", func() string {
-				dump, _ := httputil.DumpRequest(req, true)
-				return string(dump)
-			}())
+			/*
+				l.Debug("Echo request", "req", func() string {
+					dump, _ := httputil.DumpRequest(req, true)
+					return string(dump)
+				}())
+			*/
 
-			remoteAddr := req.RemoteAddr
-			if ip := req.Header.Get(echo.XRealIP); ip != "" {
+			remoteAddr := req.RemoteAddress()
+			if ip := req.Header().Get(echo.XRealIP); ip != "" {
 				remoteAddr = ip
-			} else if ip = req.Header.Get(echo.XForwardedFor); ip != "" {
+			} else if ip = req.Header().Get(echo.XForwardedFor); ip != "" {
 				remoteAddr = ip
 			} else {
 				remoteAddr, _, _ = net.SplitHostPort(remoteAddr)
 			}
 
 			start := time.Now()
-			if err := h(c); err != nil {
+			if err := next.Handle(c); err != nil {
 				c.Error(err)
 			}
 			stop := time.Now()
 			method := req.Method
-			path := req.URL.Path
+			path := req.URL().Path()
 			if path == "" {
 				path = "/"
 			}
@@ -52,21 +54,21 @@ func Logger(l log15.Logger) echo.MiddlewareFunc {
 				"time", stop.Sub(start),
 				"size", size)
 			return nil
-		}
+		})
 	}
 }
 
 // HTTPErrorHandler is an error handler with log15 support.
 func HTTPErrorHandler(l log15.Logger) echo.HTTPErrorHandler {
-	return func(err error, c *echo.Context) {
+	return func(err error, c echo.Context) {
 		code := http.StatusInternalServerError
 		msg := http.StatusText(code)
 		if he, ok := err.(*echo.HTTPError); ok {
-			code = he.Code()
-			msg = he.Error()
+			code = he.Code
+			msg = he.Message
 		}
 		if !c.Response().Committed() {
-			http.Error(c.Response(), msg, code)
+			c.String(code, msg)
 		}
 		if err.Error() != msg {
 			l.Error("Echo error", "err", err, "code", code, "msg", msg)
