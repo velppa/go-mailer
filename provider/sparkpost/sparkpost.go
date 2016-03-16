@@ -1,10 +1,9 @@
 package sparkpost
 
 import (
-	//"bytes"
+	"encoding/json"
 	"errors"
 	"net/http"
-	"net/mail"
 
 	log "gopkg.in/inconshreveable/log15.v2"
 	"gopkg.in/jmcvetta/napping.v3"
@@ -50,16 +49,6 @@ type Message struct {
 	Content    Content     `json:"content,omitempt"`
 }
 
-func fromRecipient(addr mail.Address, to message.AddressList) Recipient {
-	return Recipient{
-		Address: Address{
-			Name:     addr.Name,
-			Email:    addr.Address,
-			HeaderTo: to.String(),
-		},
-	}
-}
-
 // New returns new SparkPost instance. API key is validated upon creation,
 // returning error if key is not valid.
 func New(key string) (*SparkPost, error) {
@@ -69,13 +58,22 @@ func New(key string) (*SparkPost, error) {
 // Send sends provided message in async or sync way.
 func (sp *SparkPost) Send(msg *message.Message, async bool) (interface{}, error) {
 
-	var emptyAddrList message.AddressList
 	var recipients []Recipient
 	for _, r := range msg.To {
-		recipients = append(recipients, fromRecipient(*r, emptyAddrList))
+		recipients = append(recipients, Recipient{
+			Address: Address{
+				Email: r.Address,
+				Name:  r.Name,
+			},
+		})
 	}
 	for _, r := range append(msg.CC, msg.BCC...) {
-		recipients = append(recipients, fromRecipient(*r, msg.To))
+		recipients = append(recipients, Recipient{
+			Address: Address{
+				Email:    r.Address,
+				HeaderTo: msg.To.String(),
+			},
+		})
 	}
 
 	m := Message{
@@ -89,13 +87,12 @@ func (sp *SparkPost) Send(msg *message.Message, async bool) (interface{}, error)
 			Subject: msg.Subject,
 			Text:    msg.Text,
 			HTML:    msg.HTML,
-			Headers: make(map[string]string),
+			Headers: map[string]string{"CC": msg.CC.String()},
 		},
 	}
 
-	m.Content.Headers["CC"] = msg.CC.String()
-
-	Log.Debug("Message to send", "msg", m)
+	b, _ := json.Marshal(m)
+	Log.Debug("Message to send", "msg", string(b))
 
 	headers := make(http.Header)
 	headers.Add("Authorization", sp.key)
@@ -113,36 +110,8 @@ func (sp *SparkPost) Send(msg *message.Message, async bool) (interface{}, error)
 		return result, nil
 	}
 
-	Log.Debug("Response", "body", resp.RawText())
-	return nil, errors.New("Something wrong happened")
-
-	/*
-		b, err := json.Marshal(m)
-		if err != nil {
-			return nil, err
-		}
-
-		req, err := http.NewRequest("POST", apiURL, bytes.NewBuffer(b))
-		if err != nil {
-			return nil, err
-		}
-		req.Header.Set("Accept", "application/json")
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", s.key)
-
-		client := &http.Client{}
-		resp, err := client.Do(req)
-		if err != nil {
-			return nil, err
-		}
-		defer resp.Body.Close()
-
-		if err != nil {
-			return nil, err
-		}
-
-		return resp.Body, nil
-	*/
+	Log.Error("Response", "status", resp.Status(), "body", resp.RawText())
+	return nil, errors.New("Non-200 status returned")
 }
 
 func init() {

@@ -206,7 +206,7 @@ func sendHandler(p provider.Provider) echo.HandlerFunc {
 					Log.Debug("Trying to send message again", "iteration", i+2)
 					continue
 				}
-				Log.Debug("Provider response", "resp", resp)
+				Log.Info("Provider response", "resp", resp)
 				return
 			}
 			Log.Error("Message was not sent")
