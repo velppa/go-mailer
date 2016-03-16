@@ -5,8 +5,8 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/jmcvetta/napping"
 	log "gopkg.in/inconshreveable/log15.v2"
-	"gopkg.in/jmcvetta/napping.v3"
 
 	"github.com/schmooser/go-mailer/message"
 )

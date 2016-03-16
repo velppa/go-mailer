@@ -21,8 +21,8 @@ import:
 - package: github.com/certifi/gocertifi
   version: master # they only add certificates
 
-- package: gopkg.in/jmcvetta/napping.v3
-  version: master
+- package: github.com/jmcvetta/napping
+  version: v3.0.5
 
 - package: golang.org/x/net/context
   version: master
