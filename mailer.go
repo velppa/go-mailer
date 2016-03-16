@@ -58,6 +58,8 @@ var (
 
 	// Log is a logger variable.
 	Log = log.New()
+	// LogHandler handles log format.
+	LogHandler log.Handler
 )
 
 func init() {
@@ -89,14 +91,15 @@ func init() {
 		os.Exit(1)
 	}
 
-	Log.SetHandler(log.MultiHandler(
+	LogHandler = log.MultiHandler(
 		log.LvlFilterHandler(
 			logLvlTerm,
 			//log.StreamHandler(os.Stderr, log.LogfmtFormat())),
 			log.StdoutHandler),
 		log.LvlFilterHandler(
 			logLvlFile,
-			log.Must.FileHandler(Config.Log.FileName, log.JsonFormat()))))
+			log.Must.FileHandler(Config.Log.FileName, log.JsonFormat())))
+	Log.SetHandler(LogHandler)
 
 	Log.Debug("Configuration parameters", "config", Config)
 
@@ -198,7 +201,7 @@ func sendHandler(p provider.Provider) echo.HandlerFunc {
 				// sending message
 				resp, err := p.Send(msg, true)
 				if err != nil {
-					Log.Error("Sending message failed", "err", err, "iteration", i)
+					Log.Error("Sending message failed", "err", err, "iteration", i+1)
 					time.Sleep(time.Duration(10*i) * time.Second)
 					Log.Debug("Trying to send message again", "iteration", i+2)
 					continue
@@ -239,6 +242,7 @@ func main() {
 			Log.Error("SparkPost instance creation failed", "err", err)
 			os.Exit(1)
 		}
+		sparkpost.Log.SetHandler(LogHandler)
 	default:
 		Log.Error("Provider is not supported", "provider", Config.Main.Provider)
 		os.Exit(1)
