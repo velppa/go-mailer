@@ -24,7 +24,7 @@ being form-encoded (header `application/x-www-form-urlencoded`).
 
 Authentication is done via tokens, configured in configuration file. Token should be sent in HTTP Header:
 
-    Authorization: <secret-token-here>
+    Authorization: <secret-token>
 
 ### Data
 
@@ -86,18 +86,30 @@ Structure of response:
 
 ### Example
 
-1. Download and build
+1. Configure `config.toml` file and set up transactional mail provider. See
+   `config-example.toml` for example.
 
-`go get github.com/schmooser/go-mailer`
+2. Run it via docker:
 
-2. Edit `config.toml` file and set up transactional mail provider
+    docker run -d --name mailer -p 1233:1233 -v /path/to/config/toml:/config.toml schmooser/go-mailer
 
-3. Run `mailer` app
+3. Send test email
 
-4. Send test email
-
-    curl -v -d "token=78adfh3jjduu&subject=this is subject with spaces&from_email=schmooser@gmail.com&to=darth.vader@mailinator.com&text=Hi, my lord!" \
-    http://localhost:1233/send
+    curl -X POST -H "Authorization: token" -H "Content-Type: application/json" -H "Cache-Control: no-cache" -d '{
+        "subject": "Hello from Mailer app",
+        "text": "Hello, world!",
+        "html": "",
+        "from": {
+            "name": "Mailer App",
+            "address": "some@one.com"
+        },
+        "to": [
+            {
+                "name": "recipient",
+                "address": "hellomailer1234@mailinator.com"
+            }
+        ]
+    }' "http://your.domain.com:1233/send"
 
 
 [MJML]: http://mjml.io
