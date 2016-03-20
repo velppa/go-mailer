@@ -87,8 +87,12 @@ func (sp *SparkPost) Send(msg *message.Message, async bool) (interface{}, error)
 			Subject: msg.Subject,
 			Text:    msg.Text,
 			HTML:    msg.HTML,
-			Headers: map[string]string{"CC": msg.CC.String()},
+			Headers: make(map[string]string),
 		},
+	}
+
+	if msg.CC.String() != "" {
+		m.Content.Headers["CC"] = msg.CC.String()
 	}
 
 	b, _ := json.Marshal(m)
