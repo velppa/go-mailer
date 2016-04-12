@@ -33,6 +33,7 @@ type Message struct {
 	HTML    string
 	From    *mail.Address
 	To      AddressList
+	ReplyTo *mail.Address
 	CC      AddressList
 	BCC     AddressList
 }

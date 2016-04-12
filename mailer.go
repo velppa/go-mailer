@@ -62,6 +62,22 @@ var (
 	LogHandler log.Handler
 )
 
+const (
+	_                   = iota
+	ErrUnauthorized int = iota
+	ErrBind
+	ErrInternal
+)
+
+// Response is API response returned to sender.
+type Response struct {
+	Status           string      `json:"status"`
+	DeveloperMessage string      `json:"developer_message,omitempty"`
+	UserMessage      string      `json:"user_message,omitempty"`
+	ErrCode          int         `json:"error_code,omitempty"`
+	ProviderResponse interface{} `json:"provider_reponse,omitempty"`
+}
+
 func init() {
 	configFile := flag.String("config", "config.toml", "configuration file")
 	flag.Parse()
@@ -107,32 +123,21 @@ func init() {
 	rand.Seed(time.Now().Unix())
 }
 
-// JSONResponse is a struct which is returned to user.
-type JSONResponse struct {
-	Status  string `json:"status"`
-	Message string `json:"message"`
-}
-
-// JSONError sends json error to context.
-func JSONError(c echo.Context, code int, message string) error {
-	c.JSON(code, JSONResponse{
-		Status:  "error",
-		Message: message,
-	})
-	err := echo.NewHTTPError(code, message)
-	return err
-}
-
 // CheckToken is a middleware which checks token passed either in header or in post data.
 func CheckToken() echo.MiddlewareFunc {
 	return func(next echo.Handler) echo.Handler {
 		return echo.HandlerFunc(func(c echo.Context) error {
 			token := c.Request().Header().Get("Authorization")
 			if token == "" {
-				return JSONError(c, http.StatusBadRequest, "token not provided")
 			}
 			if _, ok := Config.Tokens[token]; !ok {
-				return JSONError(c, http.StatusUnauthorized, "invalid token")
+				return c.JSON(http.StatusUnauthorized,
+					Response{
+						Status:           "error",
+						DeveloperMessage: "Authorization token is missing or not provided",
+						UserMessage:      "You're not authorized",
+						ErrCode:          ErrUnauthorized,
+					})
 			}
 			return next.Handle(c)
 		})
@@ -149,74 +154,99 @@ func sendHandler(p provider.Provider) echo.HandlerFunc {
 			MJML    string          `json:"mjml"`
 			From    *mail.Address   `json:"from"`
 			To      []*mail.Address `json:"to"`
+			ReplyTo *mail.Address   `json:"reply_to"`
 			CC      []*mail.Address `json:"cc"`
 			BCC     []*mail.Address `json:"bcc"`
 		}{}
 
 		if err := c.Bind(&data); err != nil {
 			Log.Error("Binding data failed", "err", err)
-			return JSONError(c, http.StatusBadRequest, "can't understand provided data")
+			return c.JSON(http.StatusBadRequest,
+				Response{
+					Status:           "error",
+					DeveloperMessage: "Binding data failed",
+					UserMessage:      "can't understand provided data",
+					ErrCode:          ErrBind,
+				})
 		}
 
 		Log.Debug("Incoming data", "data", data)
 
-		// Sending message asynchrounously
-		go func() {
-			// handling mjml template
-			if data.HTML == "" && data.MJML != "" {
+		// handling mjml template
+		if data.HTML == "" && data.MJML != "" {
 
-				// save mjml content as temporary file
-				filename := path.Join(os.TempDir(), "mail-"+strconv.Itoa(rand.Int()))
-				ioutil.WriteFile(filename+".mjml", []byte(data.MJML), 0644)
-
-				// run mjml to convert to html
-				cmd := exec.Command("mjml", "-r", filename+".mjml", "-o", filename+".html")
-				err := cmd.Run()
-				if err != nil {
-					Log.Error("mjml conversion failed", "err", err, "mjml", filename+".mjml")
-				} else {
-					var b []byte
-					b, err := ioutil.ReadFile(filename + ".html")
-					if err != nil {
-						Log.Error("reading mjml-converted file failed", "err", err, "html", filename+".html")
-					} else {
-						Log.Debug("mjml converted to html successfully", "mjml", filename+".mjml", "html", filename+".html")
-						data.HTML = string(b)
-					}
-				}
+			// save mjml content as temporary file
+			filename := path.Join(os.TempDir(), "mail-"+strconv.Itoa(rand.Int()))
+			if err := ioutil.WriteFile(filename+".mjml", []byte(data.MJML), 0644); err != nil {
+				Log.Error("write mjml file", "err", err, "mjml", filename+".mjml")
+				return c.JSON(http.StatusInternalServerError,
+					Response{
+						Status:           "error",
+						DeveloperMessage: err.Error(),
+						UserMessage:      "Internal error occured",
+						ErrCode:          ErrInternal,
+					})
 			}
 
-			msg := &message.Message{
-				Subject: data.Subject,
-				Text:    data.Text,
-				HTML:    data.HTML,
-				From:    data.From,
-				To:      data.To,
-				CC:      data.CC,
-				BCC:     data.BCC,
+			// run mjml to convert to html
+
+			if err := exec.Command("mjml", "-r", filename+".mjml", "-o", filename+".html").Run(); err != nil {
+				Log.Error("mjml conversion failed", "err", err, "mjml", filename+".mjml")
+				return c.JSON(http.StatusInternalServerError,
+					Response{
+						Status:           "error",
+						DeveloperMessage: err.Error(),
+						UserMessage:      "Internal error occured",
+						ErrCode:          ErrInternal,
+					})
 			}
 
-			// trying to send message 10 times
-			for i := 0; i < 10; i++ {
-				// sending message
-				resp, err := p.Send(msg, true)
-				if err != nil {
-					Log.Error("Sending message failed", "err", err, "iteration", i+1)
-					time.Sleep(time.Duration(10*i) * time.Second)
-					Log.Debug("Trying to send message again", "iteration", i+2)
-					continue
-				}
-				Log.Info("Provider response", "resp", resp)
-				return
+			var b []byte
+			b, err := ioutil.ReadFile(filename + ".html")
+			if err != nil {
+				Log.Error("reading mjml-converted file failed", "err", err, "html", filename+".html")
+				return c.JSON(http.StatusInternalServerError,
+					Response{
+						Status:           "error",
+						DeveloperMessage: err.Error(),
+						UserMessage:      "Internal error occured",
+						ErrCode:          ErrInternal,
+					})
 			}
+			Log.Debug("mjml converted to html successfully", "mjml", filename+".mjml", "html", filename+".html")
+			data.HTML = string(b)
+		}
+
+		msg := &message.Message{
+			Subject: data.Subject,
+			Text:    data.Text,
+			HTML:    data.HTML,
+			From:    data.From,
+			To:      data.To,
+			ReplyTo: data.ReplyTo,
+			CC:      data.CC,
+			BCC:     data.BCC,
+		}
+
+		// sending message
+		resp, err := p.Send(msg, true)
+		if err != nil {
 			Log.Error("Message was not sent")
-		}()
-
-		// message was sent - returning
-		return c.JSON(http.StatusOK, JSONResponse{
-			Status:  "ok",
-			Message: "email added to the queue",
-		})
+			return c.JSON(http.StatusInternalServerError,
+				Response{
+					Status:           "error",
+					DeveloperMessage: "Failed to send email",
+					UserMessage:      "Email wasn't sent",
+					ProviderResponse: resp,
+				})
+		}
+		Log.Info("Provider response", "resp", resp)
+		return c.JSON(http.StatusOK,
+			Response{
+				Status:           "ok",
+				UserMessage:      "Email was sent",
+				ProviderResponse: resp,
+			})
 	}
 }
 

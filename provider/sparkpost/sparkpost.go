@@ -36,6 +36,7 @@ type Recipient struct {
 // Content defines SparkPost' content.
 type Content struct {
 	From    Address           `json:"from,omitempty"`
+	ReplyTo Address           `json:"reply_to,omitempty"`
 	Headers map[string]string `json:"headers,omitempty"`
 	Subject string            `json:"subject,omitempty"`
 	Text    string            `json:"text,omitempty"`
@@ -87,6 +88,10 @@ func (sp *SparkPost) Send(msg *message.Message, async bool) (interface{}, error)
 			Subject: msg.Subject,
 			Text:    msg.Text,
 			HTML:    msg.HTML,
+			ReplyTo: Address{
+				Name:    msg.ReplyTo.Name,
+				Address: msg.ReplyTo.Address,
+			},
 			Headers: map[string]string{"CC": msg.CC.String()},
 		},
 	}
