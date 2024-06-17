@@ -8,7 +8,7 @@ import (
 	"net/url"
 	"strconv"
 
-	"github.com/schmooser/go-mailer/message"
+	"github.com/velppa/go-mailer/message"
 )
 
 // Mailgun defines Mailgun transactional mail provider.
@@ -28,7 +28,7 @@ func New(user, pass, server string) *Mailgun {
 }
 
 // Send sends the message.
-func (mg *Mailgun) Send(msg *message.Message, async bool) (interface{}, error) {
+func (mg *Mailgun) Send(msg *message.Message, async bool) (any, error) {
 
 	apiURL := fmt.Sprintf("https://api.mailgun.net/v3/%s/messages", mg.server)
 

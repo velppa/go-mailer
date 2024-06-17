@@ -3,16 +3,13 @@ package sparkpost
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"github.com/jmcvetta/napping"
-	log "gopkg.in/inconshreveable/log15.v2"
 
-	"github.com/schmooser/go-mailer/message"
+	"github.com/velppa/go-mailer/message"
 )
-
-// Log represents logger.
-var Log = log.New()
 
 // SparkPost defines SparkPost transactional mail provider.
 type SparkPost struct {
@@ -56,7 +53,7 @@ func New(key string) (*SparkPost, error) {
 }
 
 // Send sends provided message in async or sync way.
-func (sp *SparkPost) Send(msg *message.Message, async bool) (interface{}, error) {
+func (sp *SparkPost) Send(msg *message.Message, async bool) (any, error) {
 
 	var recipients []Recipient
 	for _, r := range msg.To {
@@ -96,7 +93,7 @@ func (sp *SparkPost) Send(msg *message.Message, async bool) (interface{}, error)
 	}
 
 	b, _ := json.Marshal(m)
-	Log.Debug("Message to send", "msg", string(b))
+	slog.Debug("Message to send", "msg", string(b))
 
 	headers := make(http.Header)
 	headers.Add("Authorization", sp.key)
@@ -104,7 +101,7 @@ func (sp *SparkPost) Send(msg *message.Message, async bool) (interface{}, error)
 		Header: &headers,
 	}
 
-	var result interface{}
+	var result any
 	resp, err := s.Post(apiURL, &m, &result, nil)
 	if err != nil {
 		return nil, err
@@ -114,10 +111,6 @@ func (sp *SparkPost) Send(msg *message.Message, async bool) (interface{}, error)
 		return result, nil
 	}
 
-	Log.Error("Response", "status", resp.Status(), "body", resp.RawText())
+	slog.Error("Response", "status", resp.Status(), "body", resp.RawText())
 	return nil, errors.New("Non-200 status returned")
-}
-
-func init() {
-	Log.SetHandler(log.DiscardHandler())
 }

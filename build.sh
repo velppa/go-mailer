@@ -13,10 +13,10 @@ OUT_DIR=$(pwd)/build
 
 log "building app in docker container"
 docker run --rm \
-    -v $(pwd):/go/src/github.com/schmooser/go-mailer \
+    -v $(pwd):/go/src/github.com/velppa/go-mailer \
     -v "$OUT_DIR":/go/bin \
     --env CGO_ENABLED=0 \
     --env GOOS=linux \
-    --workdir /go/src/github.com/schmooser/go-mailer \
+    --workdir /go/src/github.com/velppa/go-mailer \
     golang:latest go build -a -installsuffix cgo -v -o /go/bin/mailer
 log "app is built successfully"

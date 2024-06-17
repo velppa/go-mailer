@@ -1,8 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
-	"io/ioutil"
+	"log/slog"
 	"math/rand"
 	"net/http"
 	"net/mail"
@@ -13,17 +14,11 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
-	"github.com/labstack/echo"
-	"github.com/labstack/echo/engine/standard"
-	"github.com/labstack/echo/middleware"
-	"github.com/schmooser/go-echolog15"
-	log "gopkg.in/inconshreveable/log15.v2"
 
-	"github.com/schmooser/go-mailer/message"
-	"github.com/schmooser/go-mailer/provider"
-	"github.com/schmooser/go-mailer/provider/mailgun"
-	"github.com/schmooser/go-mailer/provider/mandrill"
-	"github.com/schmooser/go-mailer/provider/sparkpost"
+	"github.com/velppa/go-mailer/message"
+	"github.com/velppa/go-mailer/provider/mailgun"
+	"github.com/velppa/go-mailer/provider/mandrill"
+	"github.com/velppa/go-mailer/provider/sparkpost"
 )
 
 var (
@@ -32,7 +27,7 @@ var (
 		Main struct {
 			Provider string `toml:"provider"`
 		}
-		Log struct {
+		slog struct {
 			FileName     string `toml:"logfile"`
 			FileLogLevel string `toml:"file-level"`
 			TermLogLevel string `toml:"term-level"`
@@ -55,92 +50,52 @@ var (
 			Port string
 		}
 	}
-
-	// Log is a logger variable.
-	Log = log.New()
-	// LogHandler handles log format.
-	LogHandler log.Handler
 )
 
 func init() {
 	configFile := flag.String("config", "config.toml", "configuration file")
 	flag.Parse()
 
-	configData, err := ioutil.ReadFile(*configFile)
+	configData, err := os.ReadFile(*configFile)
 	if err != nil {
-		Log.Crit("Reading config file", "err", err)
+		slog.Error("Reading config file", "err", err)
 		os.Exit(1)
 	}
 
 	_, err = toml.Decode(string(configData), &Config)
 	if err != nil {
-		Log.Crit("Decoding config file", "err", err)
+		slog.Error("Decoding config file", "err", err)
 		os.Exit(1)
 	}
 
-	// setting log handlers from configuration parameters
-	logLvlFile, err := log.LvlFromString(Config.Log.FileLogLevel)
-	if err != nil {
-		Log.Crit("Wrong log file level", "err", err)
-		os.Exit(1)
-	}
-
-	logLvlTerm, err := log.LvlFromString(Config.Log.TermLogLevel)
-	if err != nil {
-		Log.Crit("Wrong log term level", "err", err)
-		os.Exit(1)
-	}
-
-	LogHandler = log.MultiHandler(
-		log.LvlFilterHandler(
-			logLvlTerm,
-			//log.StreamHandler(os.Stderr, log.LogfmtFormat())),
-			log.StdoutHandler),
-		log.LvlFilterHandler(
-			logLvlFile,
-			log.Must.FileHandler(Config.Log.FileName, log.JsonFormat())))
-	Log.SetHandler(LogHandler)
-
-	Log.Debug("Configuration parameters", "config", Config)
-
-	// seeding random
-	rand.Seed(time.Now().Unix())
+	slog.Debug("Configuration parameters", "config", Config)
 }
 
-// JSONResponse is a struct which is returned to user.
-type JSONResponse struct {
-	Status  string `json:"status"`
-	Message string `json:"message"`
-}
-
-// JSONError sends json error to context.
-func JSONError(c echo.Context, code int, message string) error {
-	c.JSON(code, JSONResponse{
-		Status:  "error",
-		Message: message,
-	})
-	err := echo.NewHTTPError(code, message)
-	return err
-}
-
-// CheckToken is a middleware which checks token passed either in header or in post data.
-func CheckToken() echo.MiddlewareFunc {
-	return func(next echo.Handler) echo.Handler {
-		return echo.HandlerFunc(func(c echo.Context) error {
-			token := c.Request().Header().Get("Authorization")
-			if token == "" {
-				return JSONError(c, http.StatusBadRequest, "token not provided")
-			}
-			if _, ok := Config.Tokens[token]; !ok {
-				return JSONError(c, http.StatusUnauthorized, "invalid token")
-			}
-			return next.Handle(c)
-		})
+// AuthorizationMiddleware is a middleware which checks token passed either in header or in post data.
+func AuthorizationMiddleware(f http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		token := req.Header.Get("Authorization")
+		if _, ok := Config.Tokens[token]; !ok {
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(Response{Message: "invalid token"})
+			return
+		}
+		f(w, req)
 	}
 }
 
-func sendHandler(p provider.Provider) echo.HandlerFunc {
-	return func(c echo.Context) error {
+// Provider is an interface for transactional mail providers.
+type Provider interface {
+	// Send sends email message in sync or async regime.
+	Send(msg *message.Message, async bool) (any, error)
+}
+
+type Response struct{ Message string }
+
+func sendHandler(p Provider) http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Add("Content-Type", "encoding/json")
+
 		// binding incoming data
 		data := struct {
 			Subject string          `json:"subject"`
@@ -153,12 +108,14 @@ func sendHandler(p provider.Provider) echo.HandlerFunc {
 			BCC     []*mail.Address `json:"bcc"`
 		}{}
 
-		if err := c.Bind(&data); err != nil {
-			Log.Error("Binding data failed", "err", err)
-			return JSONError(c, http.StatusBadRequest, "can't understand provided data")
+		if err := json.NewDecoder(req.Body).Decode(&data); err != nil {
+			slog.Error("Binding data failed", "err", err)
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(Response{Message: "can't understand provided data"})
+			return
 		}
 
-		Log.Debug("Incoming data", "data", data)
+		slog.Debug("Incoming data", "data", data)
 
 		// Sending message asynchrounously
 		go func() {
@@ -167,20 +124,20 @@ func sendHandler(p provider.Provider) echo.HandlerFunc {
 
 				// save mjml content as temporary file
 				filename := path.Join(os.TempDir(), "mail-"+strconv.Itoa(rand.Int()))
-				ioutil.WriteFile(filename+".mjml", []byte(data.MJML), 0644)
+				os.WriteFile(filename+".mjml", []byte(data.MJML), 0644)
 
 				// run mjml to convert to html
 				cmd := exec.Command("mjml", "-r", filename+".mjml", "-o", filename+".html")
 				err := cmd.Run()
 				if err != nil {
-					Log.Error("mjml conversion failed", "err", err, "mjml", filename+".mjml")
+					slog.Error("mjml conversion failed", "err", err, "mjml", filename+".mjml")
 				} else {
 					var b []byte
-					b, err := ioutil.ReadFile(filename + ".html")
+					b, err := os.ReadFile(filename + ".html")
 					if err != nil {
-						Log.Error("reading mjml-converted file failed", "err", err, "html", filename+".html")
+						slog.Error("reading mjml-converted file failed", "err", err, "html", filename+".html")
 					} else {
-						Log.Debug("mjml converted to html successfully", "mjml", filename+".mjml", "html", filename+".html")
+						slog.Debug("mjml converted to html successfully", "mjml", filename+".mjml", "html", filename+".html")
 						data.HTML = string(b)
 					}
 				}
@@ -201,29 +158,28 @@ func sendHandler(p provider.Provider) echo.HandlerFunc {
 				// sending message
 				resp, err := p.Send(msg, true)
 				if err != nil {
-					Log.Error("Sending message failed", "err", err, "iteration", i+1)
+					slog.Error("Sending message failed", "err", err, "iteration", i+1)
 					time.Sleep(time.Duration(10*i) * time.Second)
-					Log.Debug("Trying to send message again", "iteration", i+2)
+					slog.Debug("Trying to send message again", "iteration", i+2)
 					continue
 				}
-				Log.Info("Provider response", "resp", resp)
+				slog.Info("Provider response", "resp", resp)
 				return
 			}
-			Log.Error("Message was not sent")
+			slog.Error("Message was not sent")
 		}()
 
 		// message was sent - returning
-		return c.JSON(http.StatusOK, JSONResponse{
-			Status:  "ok",
-			Message: "email added to the queue",
-		})
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(Response{Message: "email added to the queue"})
+		return
 	}
 }
 
 func main() {
 
 	// provider
-	var p provider.Provider
+	var p Provider
 	var err error
 
 	switch Config.Main.Provider {
@@ -233,29 +189,23 @@ func main() {
 	case "mandrill":
 		p, err = mandrill.New(Config.Mandrill.Key)
 		if err != nil {
-			Log.Error("Mandrill instance creation failed", "err", err)
+			slog.Error("Mandrill instance creation failed", "err", err)
 			os.Exit(1)
 		}
 	case "sparkpost":
 		p, err = sparkpost.New(Config.SparkPost.Key)
 		if err != nil {
-			Log.Error("SparkPost instance creation failed", "err", err)
+			slog.Error("SparkPost instance creation failed", "err", err)
 			os.Exit(1)
 		}
-		sparkpost.Log.SetHandler(LogHandler)
+		sparkpost.Log.SetHandler(slog.Handler)
 	default:
-		Log.Error("Provider is not supported", "provider", Config.Main.Provider)
+		slog.Error("Provider is not supported", "provider", Config.Main.Provider)
 		os.Exit(1)
 	}
 
-	// echo
-	e := echo.New()
-
-	e.Use(echolog15.Logger(Log))
-	e.Use(middleware.Recover())
-	e.Use(CheckToken())
-	e.SetHTTPErrorHandler(echolog15.HTTPErrorHandler(Log))
-
-	e.Post("/send", sendHandler(p))
-	e.Run(standard.New(Config.WebServer.Host + ":" + Config.WebServer.Port))
+	mux := http.NewServeMux()
+	mux.HandleFunc("/send", AuthorizationMiddleware(sendHandler(p)))
+	server := http.Server{Addr: Config.WebServer.Host + ":" + Config.WebServer.Port, Handler: mux}
+	server.ListenAndServe()
 }

@@ -5,7 +5,7 @@ import (
 
 	mmandrill "github.com/mostafah/mandrill"
 
-	"github.com/schmooser/go-mailer/message"
+	"github.com/velppa/go-mailer/message"
 )
 
 // Mandrill defines Mandrill transactional mail provider.
@@ -37,7 +37,7 @@ func (sr SendResult) String() string {
 }
 
 // Send sends provided message in async or sync way.
-func (m *Mandrill) Send(msg *message.Message, async bool) (interface{}, error) {
+func (m *Mandrill) Send(msg *message.Message, async bool) (any, error) {
 	mm := mmandrill.NewMessage()
 	mm.Subject = msg.Subject
 	mm.Text = msg.Text

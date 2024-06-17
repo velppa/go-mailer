@@ -91,7 +91,7 @@ Structure of response:
 
 2. Run it via docker:
 
-    docker run -d --name mailer -p 1233:1233 -v /path/to/config/toml:/config.toml schmooser/go-mailer
+    docker run -d --name mailer -p 1233:1233 -v /path/to/config/toml:/config.toml velppa/go-mailer
 
 3. Send test email
 
