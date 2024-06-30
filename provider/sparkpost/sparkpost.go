@@ -11,9 +11,9 @@ import (
 	"github.com/velppa/go-mailer/message"
 )
 
-// SparkPost defines SparkPost transactional mail provider.
-type SparkPost struct {
-	key string
+// Client defines Client transactional mail provider.
+type Client struct {
+	Key string
 }
 
 const apiURL = "https://api.sparkpost.com/api/v1/transmissions?num_rcpt_errors=30"
@@ -46,14 +46,8 @@ type Message struct {
 	Content    Content     `json:"content,omitempt"`
 }
 
-// New returns new SparkPost instance. API key is validated upon creation,
-// returning error if key is not valid.
-func New(key string) (*SparkPost, error) {
-	return &SparkPost{key: key}, nil
-}
-
 // Send sends provided message in async or sync way.
-func (sp *SparkPost) Send(msg *message.Message, async bool) (any, error) {
+func (sp *Client) Send(msg *message.Message, async bool) (any, error) {
 
 	var recipients []Recipient
 	for _, r := range msg.To {
@@ -96,7 +90,7 @@ func (sp *SparkPost) Send(msg *message.Message, async bool) (any, error) {
 	slog.Debug("Message to send", "msg", string(b))
 
 	headers := make(http.Header)
-	headers.Add("Authorization", sp.key)
+	headers.Add("Authorization", sp.Key)
 	s := napping.Session{
 		Header: &headers,
 	}

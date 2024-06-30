@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"fmt"
 	"log/slog"
 	"math/rand"
 	"net/http"
@@ -18,94 +19,87 @@ import (
 	"github.com/velppa/go-mailer/message"
 	"github.com/velppa/go-mailer/provider/mailgun"
 	"github.com/velppa/go-mailer/provider/mandrill"
+	"github.com/velppa/go-mailer/provider/smtp"
 	"github.com/velppa/go-mailer/provider/sparkpost"
 )
 
-var (
-	// Config is a configuration struct.
-	Config struct {
-		Main struct {
-			Provider string `toml:"provider"`
-		}
-		slog struct {
-			FileName     string `toml:"logfile"`
-			FileLogLevel string `toml:"file-level"`
-			TermLogLevel string `toml:"term-level"`
-		}
-		Mailgun struct {
-			User   string
-			Pass   string
-			Server string
-		}
-		Mandrill struct {
-			Key string
-		}
-		SparkPost struct {
-			Key string
-		}
-		// Tokens is a map with token as a key and description as a value.
-		Tokens    map[string]string
-		WebServer struct {
-			Host string
-			Port string
-		}
+type Config struct {
+	Main struct {
+		Provider string `toml:"provider"`
 	}
-)
 
-func init() {
+	Mailgun   mailgun.Client
+	SMTP      smtp.Client
+	Mandrill  mandrill.Client
+	SparkPost sparkpost.Client
+
+	// Tokens is a map with token as a key and description as a value.
+	Tokens    map[string]string
+	WebServer struct {
+		Host string
+		Port string
+	}
+}
+
+func newConfig() (*Config, error) {
 	configFile := flag.String("config", "config.toml", "configuration file")
 	flag.Parse()
 
 	configData, err := os.ReadFile(*configFile)
 	if err != nil {
-		slog.Error("Reading config file", "err", err)
-		os.Exit(1)
+		return nil, fmt.Errorf("reading config file: %w", err)
 	}
 
-	_, err = toml.Decode(string(configData), &Config)
+	var c Config
+	_, err = toml.Decode(string(configData), &c)
 	if err != nil {
-		slog.Error("Decoding config file", "err", err)
-		os.Exit(1)
+		return nil, fmt.Errorf("decoding config file: %w", err)
 	}
 
-	slog.Debug("Configuration parameters", "config", Config)
+	return &c, nil
 }
 
-// AuthorizationMiddleware is a middleware which checks token passed either in header or in post data.
-func AuthorizationMiddleware(f http.HandlerFunc) http.HandlerFunc {
+// jsonMiddleware sets Content-Type header to encoding/jsonis a middleware which checks token passed either in header or in post data.
+func jsonMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Add("Content-Type", "encoding/json")
+		next(w, req)
+	}
+}
+
+// authorizationMiddleware is a middleware which checks token passed either in header or in post data.
+func authorizationMiddleware(tokens map[string]string, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		token := req.Header.Get("Authorization")
-		if _, ok := Config.Tokens[token]; !ok {
+		if _, ok := tokens[token]; !ok {
 			w.WriteHeader(http.StatusUnauthorized)
 			json.NewEncoder(w).Encode(Response{Message: "invalid token"})
 			return
 		}
-		f(w, req)
+		next(w, req)
 	}
 }
 
-// Provider is an interface for transactional mail providers.
-type Provider interface {
+// Sender is an interface for transactional mail providers.
+type Sender interface {
 	// Send sends email message in sync or async regime.
 	Send(msg *message.Message, async bool) (any, error)
 }
 
 type Response struct{ Message string }
 
-func sendHandler(p Provider) http.HandlerFunc {
+func sendHandler(p Sender) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		w.Header().Add("Content-Type", "encoding/json")
-
 		// binding incoming data
 		data := struct {
-			Subject string          `json:"subject"`
-			Text    string          `json:"text"`
-			HTML    string          `json:"html"`
-			MJML    string          `json:"mjml"`
-			From    *mail.Address   `json:"from"`
-			To      []*mail.Address `json:"to"`
-			CC      []*mail.Address `json:"cc"`
-			BCC     []*mail.Address `json:"bcc"`
+			Subject string
+			Text    string
+			HTML    string
+			MJML    string
+			From    *mail.Address
+			To      []*mail.Address
+			CC      []*mail.Address
+			BCC     []*mail.Address
 		}{}
 
 		if err := json.NewDecoder(req.Body).Decode(&data); err != nil {
@@ -158,7 +152,7 @@ func sendHandler(p Provider) http.HandlerFunc {
 				// sending message
 				resp, err := p.Send(msg, true)
 				if err != nil {
-					slog.Error("Sending message failed", "err", err, "iteration", i+1)
+					slog.Error("Sending message failed", "err", err, "iteration", fmt.Sprintf("%d/10", i+1))
 					time.Sleep(time.Duration(10*i) * time.Second)
 					slog.Debug("Trying to send message again", "iteration", i+2)
 					continue
@@ -176,36 +170,44 @@ func sendHandler(p Provider) http.HandlerFunc {
 	}
 }
 
-func main() {
-
-	// provider
-	var p Provider
-	var err error
-
-	switch Config.Main.Provider {
-
+func newProvider(config Config) (Sender, error) {
+	switch config.Main.Provider {
 	case "mailgun":
-		p = mailgun.New(Config.Mailgun.User, Config.Mailgun.Pass, Config.Mailgun.Server)
+		return &config.Mailgun, nil
 	case "mandrill":
-		p, err = mandrill.New(Config.Mandrill.Key)
-		if err != nil {
-			slog.Error("Mandrill instance creation failed", "err", err)
-			os.Exit(1)
-		}
+		client := config.Mandrill
+		return &client, client.Ping()
 	case "sparkpost":
-		p, err = sparkpost.New(Config.SparkPost.Key)
-		if err != nil {
-			slog.Error("SparkPost instance creation failed", "err", err)
-			os.Exit(1)
-		}
-		sparkpost.Log.SetHandler(slog.Handler)
+		return &config.SparkPost, nil
+	case "smtp":
+		return &config.SMTP, nil
 	default:
-		slog.Error("Provider is not supported", "provider", Config.Main.Provider)
+		return nil, fmt.Errorf("Provider %s is not supported", config.Main.Provider)
+	}
+}
+
+func main() {
+	config, err := newConfig()
+	if err != nil {
+		slog.Error("parsing configuration failed", "err", err)
+		os.Exit(1)
+	}
+	slog.Debug("Configuration parameters", "config", config)
+
+	provider, err := newProvider(*config)
+	if err != nil {
+		slog.Error("creating provider failed", "err", err)
 		os.Exit(1)
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/send", AuthorizationMiddleware(sendHandler(p)))
-	server := http.Server{Addr: Config.WebServer.Host + ":" + Config.WebServer.Port, Handler: mux}
+	mux.HandleFunc("POST /send",
+		jsonMiddleware(
+			authorizationMiddleware(config.Tokens,
+				sendHandler(provider))))
+	addr := config.WebServer.Host + ":" + config.WebServer.Port
+	server := http.Server{Addr: addr, Handler: mux}
+
+	slog.Info("Mailer started", "address", addr)
 	server.ListenAndServe()
 }

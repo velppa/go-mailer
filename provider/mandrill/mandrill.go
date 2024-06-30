@@ -8,23 +8,14 @@ import (
 	"github.com/velppa/go-mailer/message"
 )
 
-// Mandrill defines Mandrill transactional mail provider.
-type Mandrill struct {
-	apiKey string
+// Client defines Client transactional mail provider.
+type Client struct {
+	ApiKey string
 }
 
-// New returns new Mandrill instance. API key is validated upon creation,
-// returning error if key is not valid.
-func New(key string) (*Mandrill, error) {
-	m := &Mandrill{
-		apiKey: key,
-	}
-	mmandrill.Key = m.apiKey
-	if err := mmandrill.Ping(); err != nil {
-		return nil, err
-	}
-
-	return m, nil
+func (m Client) Ping() error {
+	mmandrill.Key = m.ApiKey
+	return mmandrill.Ping()
 }
 
 // SendResult encapsulates mostafah/mandrill SendResult.
@@ -37,7 +28,7 @@ func (sr SendResult) String() string {
 }
 
 // Send sends provided message in async or sync way.
-func (m *Mandrill) Send(msg *message.Message, async bool) (any, error) {
+func (m *Client) Send(msg *message.Message, async bool) (any, error) {
 	mm := mmandrill.NewMessage()
 	mm.Subject = msg.Subject
 	mm.Text = msg.Text

@@ -2,11 +2,18 @@
 provider = "mandrill"
 #provider = "mailgun"
 #provider = "sparkpost"
+#provider = "smtp"
 
 [log]
 logfile = "mailer.log"
 file-level = "debug"
 term-level = "debug"
+
+[smtp]
+host = "smtp.yandex.ru"
+port = 587 # without ssl, for ssl use 465
+username = "some@email.com"
+password = "some-password"
 
 [mandrill]
 key = "mandrill-api-key"
@@ -19,7 +26,7 @@ user = "api"
 pass = "pass-string-for-api"
 server = "example.com"
 
-# tokens is a map of authenticated tokens: 
+# tokens is a map of authenticated tokens:
 #"token" = "description"
 [tokens]
 "380sidug8nnmhhqp" = "test token"

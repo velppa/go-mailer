@@ -11,26 +11,17 @@ import (
 	"github.com/velppa/go-mailer/message"
 )
 
-// Mailgun defines Mailgun transactional mail provider.
-type Mailgun struct {
-	user   string
-	pass   string
-	server string
-}
-
-// New returns new Mailgun instance.
-func New(user, pass, server string) *Mailgun {
-	return &Mailgun{
-		user:   user,
-		pass:   pass,
-		server: server,
-	}
+// Client defines Client transactional mail provider.
+type Client struct {
+	User   string
+	Pass   string
+	Server string
 }
 
 // Send sends the message.
-func (mg *Mailgun) Send(msg *message.Message, async bool) (any, error) {
+func (mg *Client) Send(msg *message.Message, async bool) (any, error) {
 
-	apiURL := fmt.Sprintf("https://api.mailgun.net/v3/%s/messages", mg.server)
+	apiURL := fmt.Sprintf("https://api.mailgun.net/v3/%s/messages", mg.Server)
 
 	data := url.Values{}
 	data.Add("from", msg.From.String())
@@ -49,7 +40,7 @@ func (mg *Mailgun) Send(msg *message.Message, async bool) (any, error) {
 		return "", err
 	}
 
-	req.SetBasicAuth(mg.user, mg.pass)
+	req.SetBasicAuth(mg.User, mg.Pass)
 	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Add("Content-Length", strconv.Itoa(len(data.Encode())))
 
