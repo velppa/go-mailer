@@ -23,8 +23,10 @@ func (c *Client) Send(msg *message.Message, _ bool) (any, error) {
 	m.SetHeader("Cc", msg.CC.Slice()...)
 	m.SetHeader("Bcc", msg.BCC.Slice()...)
 	m.SetHeader("Subject", msg.Subject)
-	m.SetBody("text/html", msg.HTML)
-	m.SetBody("text", msg.Text)
+	m.SetBody("text/plain", msg.Text)
+	if msg.HTML != "" {
+		m.AddAlternative("text/html", msg.HTML)
+	}
 
 	d := gomail.NewDialer(c.Host, c.Port, c.UserName, c.Password)
 
