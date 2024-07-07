@@ -5,6 +5,9 @@ CONFIG = config.toml
 build:
 	CGO_ENABLED=0 go build -o ${OUTDIR}/${APPNAME} .
 
+build-for-docker:
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ${OUTDIR}/${APPNAME}-linux .
+
 doc:
 	godoc -http=:6060 -index
 
@@ -16,3 +19,14 @@ run: build
 
 test:
 	go test ./...
+
+VERSION = 2407-amd64
+docker-build: build-for-docker
+	docker build \
+	  --platform linux/amd64 \
+	  --progress plain \
+	  -t schmooser/go-mailer:$(VERSION) .
+
+
+docker-push:
+	docker push schmooser/go-mailer:$(VERSION)

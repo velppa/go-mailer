@@ -1,13 +1,13 @@
-FROM alpine
+FROM node:lts-alpine
 
-MAINTAINER Pavel Popov keybase.io/pavelpopov
+MAINTAINER Pavel Popov velppa.github.io
 
-RUN apk add --no-cache ca-certificates bash coreutils nodejs
+RUN apk add --no-cache ca-certificates bash coreutils
 
 # installing mjml
 RUN npm install -g mjml
 
-ADD ./build /app
+ADD bin/mailer-linux /app/mailer
 
 ENV PATH=/app:$PATH
 
