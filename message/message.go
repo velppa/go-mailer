@@ -6,7 +6,7 @@ import (
 )
 
 // AddressList is a slice of Addresses.
-type AddressList []*mail.Address
+type AddressList []mail.Address
 
 // String returns list as comma-separated values.
 func (list AddressList) String() string {
@@ -31,7 +31,7 @@ type Message struct {
 	Subject string
 	Text    string
 	HTML    string
-	From    *mail.Address
+	From    mail.Address
 	To      AddressList
 	CC      AddressList
 	BCC     AddressList
@@ -43,16 +43,16 @@ func NewMessage() *Message {
 }
 
 // AddTo adds new recipient to slice of recipients.
-func (msg *Message) AddTo(addr *mail.Address) {
+func (msg *Message) AddTo(addr mail.Address) {
 	msg.To = append(msg.To, addr)
 }
 
 // AddCC adds new recipient to slice of recipients.
-func (msg *Message) AddCC(addr *mail.Address) {
+func (msg *Message) AddCC(addr mail.Address) {
 	msg.CC = append(msg.CC, addr)
 }
 
 // AddBCC adds new recipient to slice of recipients.
-func (msg *Message) AddBCC(addr *mail.Address) {
+func (msg *Message) AddBCC(addr mail.Address) {
 	msg.CC = append(msg.CC, addr)
 }

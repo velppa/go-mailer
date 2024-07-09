@@ -12,9 +12,11 @@ import (
 	"os/exec"
 	"path"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/samber/lo"
 
 	"github.com/velppa/go-mailer/message"
 	"github.com/velppa/go-mailer/provider/mailgun"
@@ -22,6 +24,46 @@ import (
 	"github.com/velppa/go-mailer/provider/smtp"
 	"github.com/velppa/go-mailer/provider/sparkpost"
 )
+
+func main() {
+	logger := slog.New(
+		slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+			ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+				if a.Value.String() == "" {
+					return slog.Attr{}
+				}
+				if (a.Key == "text" || a.Key == "html" || a.Key == "mjml") && len(a.Value.String()) > 20 {
+					return slog.Attr{Key: a.Key, Value: slog.StringValue(a.Value.String()[:20] + "...")}
+				}
+				return a
+			},
+		}))
+	slog.SetDefault(logger)
+
+	config, err := newConfig()
+	if err != nil {
+		slog.Error("parsing configuration failed", "err", err)
+		os.Exit(1)
+	}
+	slog.Debug("Configuration parameters", "config", config)
+
+	provider, err := newProvider(*config)
+	if err != nil {
+		slog.Error("creating provider failed", "err", err)
+		os.Exit(1)
+	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /send",
+		jsonMiddleware(
+			authorizationMiddleware(config.Tokens,
+				sendHandler(provider))))
+	addr := config.WebServer.Host + ":" + config.WebServer.Port
+	server := http.Server{Addr: addr, Handler: mux}
+
+	slog.Info("Mailer started", "address", addr)
+	server.ListenAndServe()
+}
 
 type Config struct {
 	Main struct {
@@ -59,7 +101,9 @@ func newConfig() (*Config, error) {
 	return &c, nil
 }
 
-// jsonMiddleware sets Content-Type header to encoding/jsonis a middleware which checks token passed either in header or in post data.
+// jsonMiddleware sets Content-Type header to encoding/jsonis a
+// middleware which checks token passed either in header or in post
+// data.
 func jsonMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Add("Content-Type", "encoding/json")
@@ -67,7 +111,8 @@ func jsonMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// authorizationMiddleware is a middleware which checks token passed either in header or in post data.
+// authorizationMiddleware is a middleware which checks token passed
+// either in header or in post data.
 func authorizationMiddleware(tokens map[string]string, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		token := req.Header.Get("Authorization")
@@ -88,20 +133,23 @@ type Sender interface {
 
 type Response struct{ Message string }
 
+type IncomingEmailMessage struct {
+	Subject string
+	Text    string
+	HTML    string
+	MJML    string
+	From    mail.Address
+	To      []mail.Address
+	CC      []mail.Address
+	BCC     []mail.Address
+}
+
 func sendHandler(p Sender) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		// binding incoming data
-		data := struct {
-			Subject string
-			Text    string
-			HTML    string
-			MJML    string
-			From    *mail.Address
-			To      []*mail.Address
-			CC      []*mail.Address
-			BCC     []*mail.Address
-		}{}
+		ctx := req.Context()
 
+		// binding incoming data
+		var data IncomingEmailMessage
 		if err := json.NewDecoder(req.Body).Decode(&data); err != nil {
 			slog.Error("Binding data failed", "err", err)
 			w.WriteHeader(http.StatusBadRequest)
@@ -109,7 +157,16 @@ func sendHandler(p Sender) http.HandlerFunc {
 			return
 		}
 
-		slog.Debug("Incoming data", "data", data)
+		slog.InfoContext(ctx, "Handling sending email request",
+			"subject", data.Subject,
+			"text", data.Text,
+			"html", data.HTML,
+			"mjml", data.MJML,
+			"from", data.From.String(),
+			"to", strings.Join(lo.Map(data.To, func(a mail.Address, _ int) string { return a.String() }), ", "),
+			"cc", strings.Join(lo.Map(data.CC, func(a mail.Address, _ int) string { return a.String() }), ", "),
+			"bcc", strings.Join(lo.Map(data.BCC, func(a mail.Address, _ int) string { return a.String() }), ", "),
+		)
 
 		// Sending message asynchrounously
 		go func() {
@@ -157,7 +214,7 @@ func sendHandler(p Sender) http.HandlerFunc {
 					slog.Debug("Trying to send message again", "iteration", i+2)
 					continue
 				}
-				slog.Info("Provider response", "resp", resp)
+				slog.Info("Provider sent message successfuly", "resp", resp)
 				return
 			}
 			slog.Error("Message was not sent")
@@ -184,30 +241,4 @@ func newProvider(config Config) (Sender, error) {
 	default:
 		return nil, fmt.Errorf("Provider %s is not supported", config.Main.Provider)
 	}
-}
-
-func main() {
-	config, err := newConfig()
-	if err != nil {
-		slog.Error("parsing configuration failed", "err", err)
-		os.Exit(1)
-	}
-	slog.Debug("Configuration parameters", "config", config)
-
-	provider, err := newProvider(*config)
-	if err != nil {
-		slog.Error("creating provider failed", "err", err)
-		os.Exit(1)
-	}
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("POST /send",
-		jsonMiddleware(
-			authorizationMiddleware(config.Tokens,
-				sendHandler(provider))))
-	addr := config.WebServer.Host + ":" + config.WebServer.Port
-	server := http.Server{Addr: addr, Handler: mux}
-
-	slog.Info("Mailer started", "address", addr)
-	server.ListenAndServe()
 }
