@@ -134,14 +134,8 @@ type Sender interface {
 type Response struct{ Message string }
 
 type IncomingEmailMessage struct {
-	Subject string
-	Text    string
-	HTML    string
 	MJML    string
-	From    mail.Address
-	To      []mail.Address
-	CC      []mail.Address
-	BCC     []mail.Address
+	message.Message
 }
 
 func sendHandler(p Sender) http.HandlerFunc {
@@ -166,13 +160,13 @@ func sendHandler(p Sender) http.HandlerFunc {
 			"to", strings.Join(lo.Map(data.To, func(a mail.Address, _ int) string { return a.String() }), ", "),
 			"cc", strings.Join(lo.Map(data.CC, func(a mail.Address, _ int) string { return a.String() }), ", "),
 			"bcc", strings.Join(lo.Map(data.BCC, func(a mail.Address, _ int) string { return a.String() }), ", "),
+			"headers", data.Headers,
 		)
 
 		// Sending message asynchrounously
 		go func() {
 			// handling mjml template
 			if data.HTML == "" && data.MJML != "" {
-
 				// save mjml content as temporary file
 				filename := path.Join(os.TempDir(), "mail-"+strconv.Itoa(rand.Int()))
 				os.WriteFile(filename+".mjml", []byte(data.MJML), 0644)
@@ -189,25 +183,15 @@ func sendHandler(p Sender) http.HandlerFunc {
 						slog.Error("reading mjml-converted file failed", "err", err, "html", filename+".html")
 					} else {
 						slog.Debug("mjml converted to html successfully", "mjml", filename+".mjml", "html", filename+".html")
-						data.HTML = string(b)
+						data.Message.HTML = string(b)
 					}
 				}
-			}
-
-			msg := &message.Message{
-				Subject: data.Subject,
-				Text:    data.Text,
-				HTML:    data.HTML,
-				From:    data.From,
-				To:      data.To,
-				CC:      data.CC,
-				BCC:     data.BCC,
 			}
 
 			// trying to send message 10 times
 			for i := 0; i < 10; i++ {
 				// sending message
-				resp, err := p.Send(msg, true)
+				resp, err := p.Send(&data.Message, true)
 				if err != nil {
 					slog.Error("Sending message failed", "err", err, "iteration", fmt.Sprintf("%d/10", i+1))
 					time.Sleep(time.Duration(10*i) * time.Second)

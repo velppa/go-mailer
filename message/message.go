@@ -26,6 +26,11 @@ func (list AddressList) Slice() []string {
 	return ss
 }
 
+type Header struct {
+	Key string
+	Values []string
+}
+
 // Message defines email message.
 type Message struct {
 	Subject string
@@ -35,6 +40,7 @@ type Message struct {
 	To      AddressList
 	CC      AddressList
 	BCC     AddressList
+	Headers []Header
 }
 
 // NewMessage returns new empty Message instance.
