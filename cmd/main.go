@@ -18,7 +18,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/samber/lo"
 
-	"github.com/velppa/go-mailer/message"
+	"github.com/velppa/go-mailer/model"
 	"github.com/velppa/go-mailer/provider/mailgun"
 	"github.com/velppa/go-mailer/provider/mandrill"
 	"github.com/velppa/go-mailer/provider/smtp"
@@ -118,7 +118,7 @@ func authorizationMiddleware(tokens map[string]string, next http.HandlerFunc) ht
 		token := req.Header.Get("Authorization")
 		if _, ok := tokens[token]; !ok {
 			w.WriteHeader(http.StatusUnauthorized)
-			json.NewEncoder(w).Encode(Response{Message: "invalid token"})
+			json.NewEncoder(w).Encode(model.Response{Message: "invalid token"})
 			return
 		}
 		next(w, req)
@@ -128,14 +128,15 @@ func authorizationMiddleware(tokens map[string]string, next http.HandlerFunc) ht
 // Sender is an interface for transactional mail providers.
 type Sender interface {
 	// Send sends email message in sync or async regime.
-	Send(msg *message.Message, async bool) (any, error)
+	Send(msg *model.Message, async bool) (any, error)
 }
 
-type Response struct{ Message string }
 
-type IncomingEmailMessage struct {
-	MJML    string
-	message.Message
+
+type Addresses []mail.Address
+
+func (a Addresses) String() string {
+	return strings.Join(lo.Map(a, func(x mail.Address, _ int) string { return x.String() }), ", ")
 }
 
 func sendHandler(p Sender) http.HandlerFunc {
@@ -143,11 +144,11 @@ func sendHandler(p Sender) http.HandlerFunc {
 		ctx := req.Context()
 
 		// binding incoming data
-		var data IncomingEmailMessage
+		var data model.SendRequest
 		if err := json.NewDecoder(req.Body).Decode(&data); err != nil {
 			slog.Error("Binding data failed", "err", err)
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(Response{Message: "can't understand provided data"})
+			json.NewEncoder(w).Encode(model.Response{Message: "provided data is malformed"})
 			return
 		}
 
@@ -157,9 +158,9 @@ func sendHandler(p Sender) http.HandlerFunc {
 			"html", data.HTML,
 			"mjml", data.MJML,
 			"from", data.From.String(),
-			"to", strings.Join(lo.Map(data.To, func(a mail.Address, _ int) string { return a.String() }), ", "),
-			"cc", strings.Join(lo.Map(data.CC, func(a mail.Address, _ int) string { return a.String() }), ", "),
-			"bcc", strings.Join(lo.Map(data.BCC, func(a mail.Address, _ int) string { return a.String() }), ", "),
+			"to", Addresses(data.To).String(), 
+			"cc", Addresses(data.CC).String(), 
+			"bcc", Addresses(data.BCC).String(), 
 			"headers", data.Headers,
 		)
 
@@ -205,8 +206,8 @@ func sendHandler(p Sender) http.HandlerFunc {
 		}()
 
 		// message was sent - returning
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(Response{Message: "email added to the queue"})
+		w.WriteHeader(http.StatusAccepted)
+		json.NewEncoder(w).Encode(model.Response{Message: "email added to the queue"})
 		return
 	}
 }

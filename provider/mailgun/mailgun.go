@@ -3,12 +3,12 @@ package mailgun
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
 
-	"github.com/velppa/go-mailer/message"
+	"github.com/velppa/go-mailer/model"
 )
 
 // Client defines Client transactional mail provider.
@@ -19,7 +19,7 @@ type Client struct {
 }
 
 // Send sends the message.
-func (mg *Client) Send(msg *message.Message, async bool) (any, error) {
+func (mg *Client) Send(msg *model.Message, async bool) (any, error) {
 
 	apiURL := fmt.Sprintf("https://api.mailgun.net/v3/%s/messages", mg.Server)
 
@@ -50,10 +50,16 @@ func (mg *Client) Send(msg *message.Message, async bool) (any, error) {
 	}
 	defer resp.Body.Close()
 
-	content, err := ioutil.ReadAll(resp.Body)
+	content, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", err
 	}
 
 	return string(content), nil
 }
+
+
+
+
+
+

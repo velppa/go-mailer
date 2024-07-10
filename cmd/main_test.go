@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/velppa/go-mailer/message"
+	"github.com/velppa/go-mailer/model"
 )
 
 // echoSender "sends" a message by logging it.
@@ -16,7 +16,7 @@ type echoSender struct{ *testing.T }
 
 var expectedTestSubject = "test message"
 
-func (s echoSender) Send(msg *message.Message, async bool) (any, error) {
+func (s echoSender) Send(msg *model.Message, async bool) (any, error) {
 	if msg.Subject != expectedTestSubject {
 		s.Errorf("subject parsed incorrectly, %s != %s", expectedTestSubject, msg.Subject)
 	}

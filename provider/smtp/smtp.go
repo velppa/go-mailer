@@ -3,7 +3,7 @@ package smtp
 import (
 	"net/mail"
 
-	"github.com/velppa/go-mailer/message"
+	"github.com/velppa/go-mailer/model"
 	"gopkg.in/gomail.v2"
 )
 
@@ -15,7 +15,7 @@ type Client struct {
 	Password string
 }
 
-func (c *Client) Send(msg *message.Message, _ bool) (any, error) {
+func (c *Client) Send(msg *model.Message, _ bool) (any, error) {
 	m := gomail.NewMessage()
 	from := &mail.Address{Address: c.UserName, Name: c.FromName}
 	m.SetHeader("From", from.String())

@@ -5,7 +5,7 @@ import (
 
 	mmandrill "github.com/mostafah/mandrill"
 
-	"github.com/velppa/go-mailer/message"
+	"github.com/velppa/go-mailer/model"
 )
 
 // Client defines Client transactional mail provider.
@@ -28,7 +28,7 @@ func (sr SendResult) String() string {
 }
 
 // Send sends provided message in async or sync way.
-func (m *Client) Send(msg *message.Message, async bool) (any, error) {
+func (m *Client) Send(msg *model.Message, async bool) (any, error) {
 	mm := mmandrill.NewMessage()
 	mm.Subject = msg.Subject
 	mm.Text = msg.Text

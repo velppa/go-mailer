@@ -3,10 +3,10 @@ APPNAME = mailer
 CONFIG = config.toml
 
 build:
-	CGO_ENABLED=0 go build -o ${OUTDIR}/${APPNAME} .
+	CGO_ENABLED=0 go build -o ${OUTDIR}/${APPNAME} cmd/*
 
 build-for-docker:
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ${OUTDIR}/${APPNAME}-linux .
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ${OUTDIR}/${APPNAME}-linux cmd/*
 
 doc:
 	godoc -http=:6060 -index

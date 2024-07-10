@@ -8,7 +8,7 @@ import (
 
 	"github.com/jmcvetta/napping"
 
-	"github.com/velppa/go-mailer/message"
+	"github.com/velppa/go-mailer/model"
 )
 
 // Client defines Client transactional mail provider.
@@ -47,7 +47,7 @@ type Message struct {
 }
 
 // Send sends provided message in async or sync way.
-func (sp *Client) Send(msg *message.Message, async bool) (any, error) {
+func (sp *Client) Send(msg *model.Message, async bool) (any, error) {
 
 	var recipients []Recipient
 	for _, r := range msg.To {
